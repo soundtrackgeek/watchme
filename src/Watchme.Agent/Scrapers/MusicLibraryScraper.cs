@@ -10,8 +10,9 @@ namespace Watchme.Agent.Scrapers;
 /// change, whichever app the rating came from (Aurora NG, Aurora, MusicBee...). Rows are per album,
 /// with rated tracks, completeness and the album rating before and after; which track got how many
 /// stars is not logged there. Emits musiclibrary/rating events.
-/// Also reads <c>library_updates</c>, Music Library's change log, for albums removed from the
-/// library (deleted in Aurora or elsewhere): one musiclibrary/album_removed event each.
+/// Also reads <c>library_updates</c>, Music Library's change log, for albums added to and removed
+/// from the library (by Aurora or any other import, or deleted): one musiclibrary/album_added or
+/// musiclibrary/album_removed event each.
 /// </summary>
 internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : IScraper
 {
@@ -37,15 +38,17 @@ internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : 
         if (!File.Exists(libraryDb))
             return [];
         using var db = AuroraScraper.OpenReadOnly(libraryDb);
-        return [.. Ratings(db, context), .. Removals(db, context)];
+        return [.. Ratings(db, context), .. AlbumUpdates(db, context, "new", "album_added", "Added"),
+                .. AlbumUpdates(db, context, "removed", "album_removed", "Removed")];
     }
 
     private string Since(ScrapeContext context) =>
         DateTimeOffset.FromUnixTimeMilliseconds(context.Now - backfillDays * 24L * 60 * 60 * 1000)
             .UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
 
-    /// <summary>Albums removed from the library: "Removed DJ Tiësto – Space Age 1.0 (1998), 16 tracks".</summary>
-    private List<WatchEvent> Removals(Microsoft.Data.Sqlite.SqliteConnection db, ScrapeContext context)
+    /// <summary>Albums added or removed: "Removed DJ Tiësto – Space Age 1.0 (1998), 16 tracks".</summary>
+    private List<WatchEvent> AlbumUpdates(Microsoft.Data.Sqlite.SqliteConnection db, ScrapeContext context,
+        string changeKind, string kind, string verb)
     {
         using (var check = db.CreateCommand())
         {
@@ -53,15 +56,16 @@ internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : 
             if (check.ExecuteScalar() is null)
                 return [];
         }
-        var cursor = context.Cursor(Source, "album_removed", "update_id");
+        var cursor = context.Cursor(Source, kind, "update_id");
         using var cmd = db.CreateCommand();
         cmd.CommandText = $"""
             SELECT id, created_at, album_id, album_artist_display, album, year, change_count, source_path
             FROM library_updates
             WHERE {(cursor is null ? "created_at >= $since" : "id > $cursor")}
-              AND change_kind = 'removed' AND category = 'album'
+              AND change_kind = $kind AND category = 'album'
             ORDER BY id;
             """;
+        cmd.Parameters.AddWithValue("$kind", changeKind);
         if (cursor is { } c)
             cmd.Parameters.AddWithValue("$cursor", c);
         else
@@ -86,12 +90,13 @@ internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : 
                 ["artist"] = artist,
                 ["year"] = year,
                 ["tracks"] = tracks,
+                // For a removal the album's folder; for an addition the folder it was imported from.
                 ["path"] = r.IsDBNull(7) ? null : r.GetString(7),
             };
-            events.Add(new WatchEvent(at.ToUnixTimeMilliseconds(), Source, "album_removed")
+            events.Add(new WatchEvent(at.ToUnixTimeMilliseconds(), Source, kind)
             {
                 App = "music-library.exe",
-                Title = $"Removed {album}" + (tracks is null ? "" : $", {tracks} {(tracks == 1 ? "track" : "tracks")}"),
+                Title = $"{verb} {album}" + (tracks is null ? "" : $", {tracks} {(tracks == 1 ? "track" : "tracks")}"),
                 Data = data.ToJsonString(Json),
                 ExtId = $"update:{r.GetInt64(0)}",
             });

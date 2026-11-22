@@ -133,6 +133,41 @@ public sealed class MusicScrapersTests : IDisposable
     }
 
     [Fact]
+    public void Added_albums_are_one_line_per_import_and_replace_auroras()
+    {
+        Exec(Library, """
+            CREATE TABLE library_updates (id INTEGER PRIMARY KEY AUTOINCREMENT, import_run_id INTEGER,
+              created_at TEXT NOT NULL, change_kind TEXT NOT NULL, category TEXT NOT NULL, album_id TEXT NOT NULL,
+              album_artist_display TEXT, album TEXT, year INTEGER, field TEXT, field_label TEXT,
+              previous_value TEXT, current_value TEXT, change_count INTEGER, description TEXT NOT NULL,
+              source_kind TEXT NOT NULL, source_label TEXT NOT NULL, source_path TEXT);
+            """);
+        var iso = DateTimeOffset.FromUnixTimeMilliseconds(_now - 20 * Min).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'+00:00'");
+        Exec(Library, $"""
+            INSERT INTO library_updates (created_at, change_kind, category, album_id, album_artist_display, album, year,
+              change_count, description, source_kind, source_label, source_path) VALUES
+              ('{iso}', 'new', 'album', 'aurora:v1:a', 'Antiloop', 'LP', 1997, 12, 'New album', 'library_import', 'x', 'C:\_ToAurora'),
+              ('{iso}', 'new', 'album', 'aurora:v1:b', 'Antiloop', 'Fastlane People', 2000, 10, 'New album', 'library_import', 'x', 'C:\_ToAurora');
+            """);
+        var events = Scrape(new MusicLibraryScraper(Library, backfillDays: 7));
+        Assert.Equal(["Added Antiloop – LP (1997), 12 tracks", "Added Antiloop – Fastlane People (2000), 10 tracks"],
+            events.Select(e => e.Title));
+
+        // Aurora's own record of the same import, and of one Music Library has not logged.
+        _watchme.Insert([
+            new WatchEvent(_now - 21 * Min, EventSources.Aurora, "album_added")
+                { Title = "Added album Antiloop - LP (1997)", Data = """{"album_id":"aurora:v1:a"}""", ExtId = "album_added:a" },
+            new WatchEvent(_now - 10 * Min, EventSources.Aurora, "album_added")
+                { Title = "Added album Westlife - Gravity (2010)", Data = """{"album_id":"aurora:v1:c"}""", ExtId = "album_added:c" },
+        ]);
+
+        var lines = DailyReport.LoadActivity(_watchme, _now - 60 * Min, _now);
+        Assert.Equal(2, lines.Count);
+        Assert.EndsWith(@"Music Library   Added 2 albums (22 tracks) from C:\_ToAurora: Antiloop: LP (1997), Fastlane People (2000)", lines[0]);
+        Assert.EndsWith("Aurora          Added album Westlife - Gravity (2010)", lines[1]);
+    }
+
+    [Fact]
     public void Aurora_ng_listens_are_their_own_source()
     {
         Exec(NgHistory, $"""

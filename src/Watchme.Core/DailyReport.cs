@@ -129,7 +129,18 @@ public static class DailyReport
         output.WriteLine();
         if (spans.Count == 0)
         {
-            output.WriteLine("Nothing recorded for this day.");
+            // The agent was not running, but app history imported later may still cover the day.
+            var imported = LoadActivity(db, from, to, spans);
+            if (imported.Count == 0)
+            {
+                output.WriteLine("Nothing recorded for this day.");
+                return;
+            }
+            output.WriteLine("No focus time recorded (the agent was not running), but apps logged this:");
+            output.WriteLine();
+            output.WriteLine("Activity in apps");
+            foreach (var line in imported)
+                output.WriteLine($"  {line}");
             return;
         }
 
@@ -224,7 +235,11 @@ public static class DailyReport
         var lines = AgentSessions(events.Where(e => e.Source == EventSources.T3 && e.Kind == "run").ToList(), spans)
             .ToList();
         lines.AddRange(GitLines(events.Where(e => e.Source == EventSources.Git).ToList()));
-        lines.AddRange(RemovalLines(events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "album_removed").ToList()));
+        lines.AddRange(AlbumLines(events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "album_removed").ToList(), "Removed"));
+        var added = events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "album_added").ToList();
+        lines.AddRange(AlbumLines(added, "Added"));
+        // Aurora logs the albums it imports too, under the same id; Music Library's line says more.
+        var addedIds = added.Select(e => Str(e.Data, "album_id")).ToHashSet();
         lines.AddRange(PowerShellLines(events.Where(e => e.Source == EventSources.PowerShell && e.Kind == "command").ToList()));
         lines.AddRange(RatingLines(
             events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "rating").ToList(),
@@ -232,7 +247,8 @@ public static class DailyReport
         events = events
             .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git
                         && !(e.Source == EventSources.PowerShell && e.Kind == "command")
-                        && !(e.Source == EventSources.MusicLibrary && e.Kind == "album_removed")
+                        && !(e.Source == EventSources.MusicLibrary && e.Kind is "album_removed" or "album_added")
+                        && !(e.Source == EventSources.Aurora && e.Kind == "album_added" && addedIds.Contains(Str(e.Data, "album_id")))
                         && !(e.Source is EventSources.MusicLibrary or EventSources.AuroraNg && e.Kind == "rating"))
             .ToList();
 
@@ -397,20 +413,21 @@ public static class DailyReport
         return $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} {what}";
     }
 
-    /// <summary>Albums removed less than this far apart are one clean-up.</summary>
-    public const long RemovalGapMs = 30 * 60 * 1000;
+    /// <summary>Albums added or removed less than this far apart are one import or clean-up.</summary>
+    public const long AlbumBatchGapMs = 30 * 60 * 1000;
 
     /// <summary>
-    /// Albums removed from Music Library, one line per clean-up, albums listed per artist:
+    /// Albums added to or removed from Music Library, one line per batch, albums listed per artist:
     /// "Removed 9 albums (140 tracks): DJ Tiësto: Space Age 1.0 (1998), Magik Four (1999); Tiësto: ...".
+    /// Additions name the folder they were imported from when they share one.
     /// </summary>
-    private static IEnumerable<(long Ts, string Line)> RemovalLines(List<ActivityEvent> removals)
+    private static IEnumerable<(long Ts, string Line)> AlbumLines(List<ActivityEvent> albums, string verb)
     {
         var source = EventSources.DisplayName(EventSources.MusicLibrary);
         var run = new List<ActivityEvent>();
-        foreach (var e in removals.OrderBy(e => e.Ts))
+        foreach (var e in albums.OrderBy(e => e.Ts))
         {
-            if (run.Count > 0 && e.Ts - run[^1].Ts > RemovalGapMs)
+            if (run.Count > 0 && e.Ts - run[^1].Ts > AlbumBatchGapMs)
             {
                 yield return Line(run);
                 run = [];
@@ -429,8 +446,10 @@ public static class DailyReport
             var byArtist = run.GroupBy(e => Str(e.Data, "artist") ?? "?")
                 .Select(g => $"{g.Key}: " + string.Join(", ", g.Select(e =>
                     Str(e.Data, "album") + (Int(e, "year") is { } y ? $" ({y})" : ""))));
-            var what = $"Removed {run.Count} albums{(tracks > 0 ? $" ({tracks} tracks)" : "")}: {string.Join("; ", byArtist)}";
-            return (first.Ts, $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} {Trim(what, 400)}");
+            var folders = run.Select(e => Str(e.Data, "path")).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+            var from = verb == "Added" && folders is [{ } folder] ? $" from {folder}" : "";
+            var what = $"{verb} {run.Count} albums{(tracks > 0 ? $" ({tracks} tracks)" : "")}{from}: {string.Join("; ", byArtist)}";
+            return (first.Ts, $"{When(first.Ts, last.Ts)}{source,-15} {Trim(what, 400)}");
         }
     }
 
@@ -485,8 +504,7 @@ public static class DailyReport
                 line += $", {failed} failed";
             if (tools.Count > 0)
                 line += ": " + string.Join(", ", tools);
-            var end = session.Max(End);
-            return (first.Ts, $"{Time(first.Ts)}–{Time(end)}  {source,-15} {line}");
+            return (first.Ts, $"{When(first.Ts, session.Max(End))}{source,-15} {line}");
         }
 
         static long End(ActivityEvent e) => e.Data?["end_ts"]?.GetValue<long>() ?? e.Ts;
@@ -712,6 +730,10 @@ public static class DailyReport
         }
         return result;
     }
+
+    /// <summary>"14:02–14:40  ", or "14:02        " when both fall in the same minute.</summary>
+    private static string When(long start, long end) =>
+        Time(start) == Time(end) ? $"{Time(start)}        " : $"{Time(start)}–{Time(end)}  ";
 
     private static string Time(long ms) => DateTimeOffset.FromUnixTimeMilliseconds(ms).LocalDateTime.ToString("HH:mm");
 

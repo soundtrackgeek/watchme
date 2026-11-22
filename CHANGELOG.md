@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.11.0] - 2026-11-22
+
+### Added
+
+- Added albums: reads albums added to Music Library (its `library_updates` log) as
+  `musiclibrary/album_added` events; the report shows one line per import with the source folder
+  and the albums per artist.
+
+### Changed
+
+- Report: Aurora's `album_added` events for albums Music Library also logged are left out, so an
+  import is shown once.
+- Report: a day without focus time (the agent was not running) still shows the activity apps
+  logged that day, instead of "Nothing recorded".
+- Report: a grouped line whose start and end fall in the same minute shows one time.
+
 ## [0.10.0] - 2026-11-22
 
 ### Added
