@@ -65,6 +65,18 @@ namespace Watchme.Agent
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "com.soundtrackgeek.aurora");
                 scrapers.Add(new AuroraScraper(auroraDir, config.ScrapeBackfillDays));
             }
+            if (config.AuroraNgEnabled)
+            {
+                var history = config.AuroraNgHistoryDb ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "aurora_ng", "aurora-history.sqlite3");
+                scrapers.Add(new AuroraNgScraper(history, config.ScrapeBackfillDays));
+            }
+            if (config.MusicLibraryEnabled)
+            {
+                var library = config.MusicLibraryDb ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "com.local.musiclibrary", "music-library.sqlite3");
+                scrapers.Add(new MusicLibraryScraper(library, config.ScrapeBackfillDays));
+            }
             if (config.TotalCommanderEnabled)
             {
                 var ini = config.TotalCommanderIni ?? Path.Combine(

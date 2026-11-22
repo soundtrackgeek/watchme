@@ -47,7 +47,7 @@ internal sealed class AuroraScraper(string dataDir, int backfillDays) : IScraper
 
         // All three queries hit an index and only read new rows, so polling is cheap.
         if (File.Exists(HistoryDb))
-            events.AddRange(ReadListens(context, since));
+            events.AddRange(ReadListens(HistoryDb, Source, App, context, since));
         if (File.Exists(StateDb))
         {
             events.AddRange(ReadTagEdits(context, since));
@@ -56,7 +56,7 @@ internal sealed class AuroraScraper(string dataDir, int backfillDays) : IScraper
         return events;
     }
 
-    private static SqliteConnection OpenReadOnly(string path)
+    internal static SqliteConnection OpenReadOnly(string path)
     {
         var builder = new SqliteConnectionStringBuilder
         {
@@ -72,11 +72,15 @@ internal sealed class AuroraScraper(string dataDir, int backfillDays) : IScraper
 
     // ---- Listens ----
 
-    private List<WatchEvent> ReadListens(ScrapeContext context, long since)
+    /// <summary>
+    /// Finished listens from a database in Aurora's history format. Aurora NG keeps its own file
+    /// in the same format, so this serves both.
+    /// </summary>
+    internal static List<WatchEvent> ReadListens(string historyDb, string source, string app, ScrapeContext context, long since)
     {
-        var from = context.Cursor(Source, "listen") is { } cursor ? cursor - ListenLookbackMs : since;
+        var from = context.Cursor(source, "listen") is { } cursor ? cursor - ListenLookbackMs : since;
 
-        using var db = OpenReadOnly(HistoryDb);
+        using var db = OpenReadOnly(historyDb);
         using var cmd = db.CreateCommand();
         cmd.CommandText = """
             SELECT session_id, title, artist, album, genre, directory, filename, duration_seconds,
@@ -106,9 +110,9 @@ internal sealed class AuroraScraper(string dataDir, int backfillDays) : IScraper
                 ["play"] = r.GetInt64(11) == 1,
                 ["outcome"] = r.GetString(12),
             };
-            events.Add(new WatchEvent(r.GetInt64(8), Source, "listen")
+            events.Add(new WatchEvent(r.GetInt64(8), source, "listen")
             {
-                App = App,
+                App = app,
                 Title = $"{artist} – {title}",
                 Data = data.ToJsonString(Json),
                 ExtId = "listen:" + r.GetString(0),

@@ -36,6 +36,18 @@ public sealed class WatchmeConfig
     /// <summary>Aurora's data folder; null means %APPDATA%\com.soundtrackgeek.aurora.</summary>
     public string? AuroraDataDir { get; set; }
 
+    /// <summary>Read the tracks you play in Aurora NG from its own listening history.</summary>
+    public bool AuroraNgEnabled { get; set; } = true;
+
+    /// <summary>Aurora NG's history database; null means %LOCALAPPDATA%\aurora_ng\aurora-history.sqlite3.</summary>
+    public string? AuroraNgHistoryDb { get; set; }
+
+    /// <summary>Read rating changes (from any app) from Music Library's catalog.</summary>
+    public bool MusicLibraryEnabled { get; set; } = true;
+
+    /// <summary>Music Library's catalog; null means %APPDATA%\com.local.musiclibrary\music-library.sqlite3.</summary>
+    public string? MusicLibraryDb { get; set; }
+
     /// <summary>Read file operations from Total Commander's log file (enable it under Configuration → Log file).</summary>
     public bool TotalCommanderEnabled { get; set; } = true;
 

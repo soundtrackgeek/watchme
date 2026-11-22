@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.7.0] - 2026-11-22
+
+### Added
+
+- Aurora NG scraper: tracks played in Aurora NG, from its own listening history file, which
+  Aurora only sees through OneDrive (so they were missing before).
+- Music Library scraper: rating changes from Music Library's `rating_events`, whichever app made
+  them; the report shows one line per album rated in one sitting.
+- Config: `auroraNgEnabled`, `auroraNgHistoryDb`, `musicLibraryEnabled`, `musicLibraryDb`.
+
+### Changed
+
+- Listens are grouped per album folder, so tracks with guest artists no longer split an album
+  into several lines.
+
 ## [0.6.0] - 2026-11-22
 
 ### Added

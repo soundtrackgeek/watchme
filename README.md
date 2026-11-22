@@ -10,7 +10,7 @@ so it can tell you not just *that* you used an app but *what you did* in it.
 This is a layered plan:
 
 1. **Focus, idle, sessions and processes** — works for every app with no per-app code.
-2. **App-native data sources** — Aurora, Total Commander, T3 Code sessions and git.
+2. **App-native data sources** — Aurora, Aurora NG, Music Library ratings, Total Commander, T3 Code sessions and git.
 3. A local endpoint your own apps can push events to.
 4. OS-level file attribution (ETW) and UI Automation scraping where nothing else works.
 
@@ -38,12 +38,29 @@ last `scrapeBackfillDays` days.
 | `aurora` | `listen`      | `aurora-history.sqlite3` → `listening_sessions` | `Bad Manners – Lorraine` (data: album, genre, listened seconds, play/skip) |
 | `aurora` | `tag_edit`    | `aurora-state.sqlite3` → `tag_edit_operations`, grouped per album folder | `Changed genre Reggaeton → Reggaetón on Daddy Yankee – King Daddy (11 tracks)` |
 | `aurora` | `album_added` | `aurora-state.sqlite3` → `album_additions` | `Added album Antiloop - LP (1997)` |
+| `aurora_ng` | `listen`   | `%LOCALAPPDATA%\aurora_ng\aurora-history.sqlite3` (Aurora's format, its own file) | `Tiësto – Love Comes Again` |
+| `musiclibrary` | `rating` | Music Library's `music-library.sqlite3` → `rating_events`, from any app | `Rated 1 more track on Tiësto – Just Be (2004): 1 of 10 rated, album rating 80` |
 | `totalcmd` | `file_op`   | Total Commander's log file (path read from `wincmd.ini`) | `Copied 3 items from c:\photos to d:\backup\photos (created 2 folders)` |
 | `t3`     | `run`         | T3 Code's `~\.t3\userdata\statev2.sqlite` → runs, threads, projects, messages | `Claude Code Opus 5.5 (medium) · watchme / Activity monitor · 4m 12s` |
 | `git`    | `commit` / `push` / `pull` / `merge` / `checkout` / `reset` / `rebase` / `clone` | Reflogs (`.git/logs/HEAD`, worktrees, `logs/refs/remotes`) of repos under `gitRoots` | `Committed to watchme (master): Add T3 Code scraper` |
 | `git`    | `repo_init` / `folder_created` | Creation time of `.git` / of folders directly inside `gitRoots` | `Created folder watchme in C:\_code` |
 
 Track and disc numbering changes are kept in `data.changes` but shortened to "numbering" in titles.
+
+### Aurora NG and ratings
+
+Aurora NG keeps its own listening history and shares it with Aurora only through OneDrive, so
+Watchme reads its file directly. Its ratings are written into the MP3s and Music Library, which
+logs every change to an album's ratings in `rating_events`, whichever app made it. That log is per
+album (rated tracks, completeness and album rating before and after), not per track, so the report
+shows one line per album you rated in one sitting:
+
+```
+10:48–11:07  Aurora NG       Listened to Milk Inc. – Closer: 14 tracks, 14 counted as plays
+10:49–11:07  Music Library   Rated Milk Inc. – Closer (2003): 0 → 14 of 14 tracks rated, album rating 92
+```
+
+Listens are grouped per album folder, so guest artists ("feat. ...") stay on the album's line.
 
 ### T3 Code sessions
 
@@ -185,6 +202,10 @@ GROUP BY app ORDER BY minutes DESC;
 | `ignoreProcesses`     | Windows helper processes | Left out of process start/exit events |
 | `auroraEnabled`       | `true`  | Read Aurora's plays, tag edits and album additions |
 | `auroraDataDir`       | `null`  | Aurora's data folder; `null` means `%APPDATA%\com.soundtrackgeek.aurora` |
+| `auroraNgEnabled`     | `true`  | Read Aurora NG's listening history |
+| `auroraNgHistoryDb`   | `null`  | `null` means `%LOCALAPPDATA%\aurora_ng\aurora-history.sqlite3` |
+| `musicLibraryEnabled` | `true`  | Read rating changes from Music Library |
+| `musicLibraryDb`      | `null`  | `null` means `%APPDATA%\com.local.musiclibrary\music-library.sqlite3` |
 | `totalCommanderEnabled` | `true` | Read Total Commander's file operation log |
 | `totalCommanderIni`   | `null`  | Path to `wincmd.ini`; `null` means `%APPDATA%\GHISLER\wincmd.ini` |
 | `t3Enabled`           | `true`  | Read T3 Code runs (Claude Code, Codex, Antigravity...) |

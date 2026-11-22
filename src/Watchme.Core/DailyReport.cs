@@ -224,8 +224,10 @@ public static class DailyReport
         var lines = AgentSessions(events.Where(e => e.Source == EventSources.T3 && e.Kind == "run").ToList(), spans)
             .ToList();
         lines.AddRange(GitLines(events.Where(e => e.Source == EventSources.Git).ToList()));
+        lines.AddRange(RatingLines(events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "rating").ToList()));
         events = events
-            .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git)
+            .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git
+                        && !(e.Source == EventSources.MusicLibrary && e.Kind == "rating"))
             .ToList();
 
         for (var i = 0; i < events.Count; i++)
@@ -239,11 +241,16 @@ public static class DailyReport
             }
 
             // Collapse a run of listens from the same album.
+            // Same album means the same folder, so "Milk Inc. feat. Silvy" stays on Milk Inc.'s album;
+            // the artist is the fallback for listens without a path.
             var album = Str(e.Data, "album");
             var artist = Str(e.Data, "artist");
+            static string? Folder(ActivityEvent x) => Str(x.Data, "path") is { } p ? Path.GetDirectoryName(p) : Str(x.Data, "artist");
+            var folder = Folder(e);
             var j = i;
             while (j + 1 < events.Count && events[j + 1].Kind == "listen" && events[j + 1].Source == e.Source
-                   && Str(events[j + 1].Data, "album") == album && Str(events[j + 1].Data, "artist") == artist)
+                   && Str(events[j + 1].Data, "album") == album
+                   && string.Equals(Folder(events[j + 1]), folder, StringComparison.OrdinalIgnoreCase))
                 j++;
 
             var run = events.GetRange(i, j - i + 1);
@@ -251,11 +258,57 @@ public static class DailyReport
             var plays = run.Count(x => x.Data?["play"]?.GetValue<bool>() == true);
             var what = run.Count == 1
                 ? $"Listened to {e.Title}{(album is null ? "" : $" ({album})")}{(plays == 0 ? ", skipped" : "")}"
-                : $"Listened to {artist} – {album}: {run.Count} tracks, {plays} counted as plays";
+                : $"Listened to {run.GroupBy(x => Str(x.Data, "artist")).MaxBy(g => g.Count())!.Key} – {album}: {run.Count} tracks, {plays} counted as plays";
             lines.Add((e.Ts, $"{Time(e.Ts)}–{Time(end)}  {source,-15} {what}"));
             i = j;
         }
         return lines.OrderBy(l => l.Ts).Select(l => l.Line).ToList();
+    }
+
+    /// <summary>
+    /// Music Library rating events, one line per album and sitting (changes less than 30 minutes
+    /// apart): "Rated Milk Inc. – Closer (2003): 10 → 14 of 14 tracks rated, album rating 92 → 93".
+    /// </summary>
+    private static IEnumerable<(long Ts, string Line)> RatingLines(List<ActivityEvent> ratings)
+    {
+        var source = EventSources.DisplayName(EventSources.MusicLibrary);
+        foreach (var album in ratings.GroupBy(e => Str(e.Data, "album_id")))
+        {
+            var run = new List<ActivityEvent>();
+            foreach (var e in album.OrderBy(e => e.Ts))
+            {
+                if (run.Count > 0 && e.Ts - run[^1].Ts > 30 * 60 * 1000)
+                {
+                    yield return Line(run);
+                    run = [];
+                }
+                run.Add(e);
+            }
+            if (run.Count > 0)
+                yield return Line(run);
+        }
+
+        (long, string) Line(List<ActivityEvent> run)
+        {
+            var (first, last) = (run[0], run[^1]);
+            if (run.Count == 1)
+                return (first.Ts, $"{Time(first.Ts)}        {source,-15} {first.Title}");
+
+            int? Int(ActivityEvent e, string key) => e.Data?[key]?.GetValue<int>();
+            var name = $"{Str(first.Data, "artist")} – {Str(first.Data, "album")}"
+                       + (Int(first, "year") is { } y ? $" ({y})" : "");
+            var (before, after, total) = (Int(first, "rated_before") ?? 0, Int(last, "rated_after") ?? 0, Int(last, "tracks"));
+            var counts = before == after ? $"{after}" : $"{before} → {after}";
+            var what = $"Rated {name}: {counts}{(total is null ? "" : $" of {total}")} tracks rated";
+            var (ratingBefore, ratingAfter) = (Int(first, "album_rating_before"), Int(last, "album_rating_after"));
+            what += (ratingBefore, ratingAfter) switch
+            {
+                ({ } b, { } a) when b != a => $", album rating {b} → {a}",
+                (_, { } a) => $", album rating {a}",
+                _ => "",
+            };
+            return (first.Ts, $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} {what}");
+        }
     }
 
     /// <summary>Commits to one branch more than this far apart get their own lines.</summary>
