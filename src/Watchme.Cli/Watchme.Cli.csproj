@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>watchme</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Watchme.Core\Watchme.Core.csproj" />
+    <ProjectReference Include="..\Watchme.Agent\Watchme.Agent.csproj" />
+  </ItemGroup>
+
+</Project>

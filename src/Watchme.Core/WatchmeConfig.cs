@@ -1,0 +1,61 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Watchme.Core;
+
+/// <summary>User settings, stored as JSON in the data directory. Created with defaults on first run.</summary>
+public sealed class WatchmeConfig
+{
+    /// <summary>No keyboard or mouse input for this long marks you as idle.</summary>
+    public int IdleThresholdSeconds { get; set; } = 300;
+
+    /// <summary>A window title must stay the same this long before it is recorded (filters "Copying 45%" noise).</summary>
+    public int TitleStableSeconds { get; set; } = 2;
+
+    public int ProcessPollSeconds { get; set; } = 5;
+
+    /// <summary>Apps whose window titles are never stored (only that they had focus).</summary>
+    public List<string> RedactTitleApps { get; set; } =
+        ["KeePass.exe", "KeePassXC.exe", "1Password.exe", "Bitwarden.exe"];
+
+    /// <summary>Any title containing one of these (case-insensitive) is not stored.</summary>
+    public List<string> RedactTitlePatterns { get; set; } =
+        ["InPrivate", "Incognito", "Private Browsing"];
+
+    /// <summary>Helper processes left out of process start/exit events.</summary>
+    public List<string> IgnoreProcesses { get; set; } =
+    [
+        "conhost.exe", "dllhost.exe", "RuntimeBroker.exe", "backgroundTaskHost.exe",
+        "SearchProtocolHost.exe", "SearchFilterHost.exe", "WerFault.exe", "smartscreen.exe",
+        "taskhostw.exe", "WmiPrvSE.exe", "audiodg.exe", "consent.exe",
+    ];
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        WriteIndented = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        ReadCommentHandling = JsonCommentHandling.Skip,
+        AllowTrailingCommas = true,
+        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+    };
+
+    /// <summary>Loads the config, writing the defaults to disk if the file does not exist yet.</summary>
+    public static WatchmeConfig Load(string path)
+    {
+        if (File.Exists(path))
+            return JsonSerializer.Deserialize<WatchmeConfig>(File.ReadAllText(path), JsonOptions) ?? new();
+
+        var config = new WatchmeConfig();
+        File.WriteAllText(path, JsonSerializer.Serialize(config, JsonOptions));
+        return config;
+    }
+
+    public bool ShouldRedactTitle(string? app, string? title)
+    {
+        if (string.IsNullOrEmpty(title))
+            return false;
+        if (app is not null && RedactTitleApps.Contains(app, StringComparer.OrdinalIgnoreCase))
+            return true;
+        return RedactTitlePatterns.Any(p => title.Contains(p, StringComparison.OrdinalIgnoreCase));
+    }
+}

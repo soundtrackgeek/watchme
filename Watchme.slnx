@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Watchme.Agent/Watchme.Agent.csproj" />
+    <Project Path="src/Watchme.Cli/Watchme.Cli.csproj" />
+    <Project Path="src/Watchme.Core/Watchme.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Watchme.Tests/Watchme.Tests.csproj" />
+  </Folder>
+</Solution>
