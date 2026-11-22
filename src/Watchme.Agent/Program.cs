@@ -67,9 +67,9 @@ namespace Watchme.Agent
             }
             if (config.AuroraNgEnabled)
             {
-                var history = config.AuroraNgHistoryDb ?? Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "aurora_ng", "aurora-history.sqlite3");
-                scrapers.Add(new AuroraNgScraper(history, config.ScrapeBackfillDays));
+                var dir = config.AuroraNgDataDir ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "aurora_ng");
+                scrapers.Add(new AuroraNgScraper(dir, config.ScrapeBackfillDays));
             }
             if (config.MusicLibraryEnabled)
             {

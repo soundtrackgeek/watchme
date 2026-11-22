@@ -101,12 +101,53 @@ public sealed class MusicScrapersTests : IDisposable
               'Trance', 'D:\MUSIC\Tiësto - Just Be (2004)', '02.mp3', 300, {_now - 10 * Min}, {_now - 9 * Min}, 35, 1, NULL, 30, 'skipped');
             """);
 
-        var e = Assert.Single(Scrape(new AuroraNgScraper(NgHistory, backfillDays: 7)));
+        var e = Assert.Single(Scrape(new AuroraNgScraper(_dir, backfillDays: 7)));
         Assert.Equal(EventSources.AuroraNg, e.Source);
         Assert.Equal("Tiësto – Love Comes Again", e.Title);
 
         var line = Assert.Single(DailyReport.LoadActivity(_watchme, _now - 60 * Min, _now));
         Assert.Contains("Aurora NG       Listened to Tiësto – Love Comes Again (Just Be)", line);
+    }
+
+    /// <summary>A row in Aurora NG's rating log, with the schema Aurora NG 0.27.0 creates.</summary>
+    private void Logged(long at, string track, int? before, int? after, string loveBefore = "neutral", string loveAfter = "neutral")
+    {
+        var log = Path.Combine(_dir, "rating-log.sqlite3");
+        string Sql(int? v) => v is null ? "NULL" : v.Value.ToString();
+        Exec(log, $"""
+            CREATE TABLE IF NOT EXISTS rating_changes (id INTEGER PRIMARY KEY AUTOINCREMENT, changed_at_ms INTEGER NOT NULL,
+              track_key TEXT NOT NULL, path TEXT NOT NULL, album_id TEXT NOT NULL, title TEXT NOT NULL, artist TEXT NOT NULL,
+              album TEXT, album_artist TEXT, rating_before INTEGER, rating_after INTEGER,
+              love_before TEXT NOT NULL, love_after TEXT NOT NULL);
+            INSERT INTO rating_changes (changed_at_ms, track_key, path, album_id, title, artist, album, album_artist,
+              rating_before, rating_after, love_before, love_after)
+            VALUES ({at}, 'k', 'D:\MUSIC\Milk Inc. - Closer (2003)\{track}.mp3', 'a1', '{track}', 'Milk Inc.', 'Closer', 'Milk Inc.',
+              {Sql(before)}, {Sql(after)}, '{loveBefore}', '{loveAfter}');
+            """);
+    }
+
+    [Fact]
+    public void Aurora_ng_ratings_name_the_track_and_merge_with_library_totals()
+    {
+        Logged(_now - 20 * Min, "Walk On Water", null, 80);
+        Logged(_now - 19 * Min, "Sleepwalker", null, 100);
+        Logged(_now - 18 * Min, "Sleepwalker", 100, 100, "neutral", "loved");
+        Logged(_now - 17 * Min, "Closer", 60, 90);
+        Rating(_now - 19 * Min, "ratedMore", 12, 14, 14, 90, 92);
+
+        var titles = Scrape(new AuroraNgScraper(_dir, backfillDays: 7)).Select(e => e.Title).ToList();
+        Assert.Equal(
+        [
+            "Rated Milk Inc. – Walk On Water 4★",
+            "Rated Milk Inc. – Sleepwalker 5★",
+            "Loved Milk Inc. – Sleepwalker",
+            "Rated Milk Inc. – Closer 4.5★ (was 3★)",
+        ], titles);
+        Scrape(new MusicLibraryScraper(Library, backfillDays: 7));
+
+        var line = Assert.Single(DailyReport.LoadActivity(_watchme, _now - 60 * Min, _now));
+        Assert.EndsWith("Aurora NG       Rated 3 tracks on Milk Inc. – Closer: 5★ ×1, 4.5★ ×1, 4★ ×1; loved 1"
+                        + " · 12 → 14 of 14 tracks rated, album rating 90 → 92", line);
     }
 
     public void Dispose()

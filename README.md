@@ -39,6 +39,7 @@ last `scrapeBackfillDays` days.
 | `aurora` | `tag_edit`    | `aurora-state.sqlite3` → `tag_edit_operations`, grouped per album folder | `Changed genre Reggaeton → Reggaetón on Daddy Yankee – King Daddy (11 tracks)` |
 | `aurora` | `album_added` | `aurora-state.sqlite3` → `album_additions` | `Added album Antiloop - LP (1997)` |
 | `aurora_ng` | `listen`   | `%LOCALAPPDATA%\aurora_ng\aurora-history.sqlite3` (Aurora's format, its own file) | `Tiësto – Love Comes Again` |
+| `aurora_ng` | `rating`   | `%LOCALAPPDATA%\aurora_ng\rating-log.sqlite3` → `rating_changes` (Aurora NG 0.27.0+) | `Rated Tiësto – Traffic 4★ (was 3★)` |
 | `musiclibrary` | `rating` | Music Library's `music-library.sqlite3` → `rating_events`, from any app | `Rated 1 more track on Tiësto – Just Be (2004): 1 of 10 rated, album rating 80` |
 | `totalcmd` | `file_op`   | Total Commander's log file (path read from `wincmd.ini`) | `Copied 3 items from c:\photos to d:\backup\photos (created 2 folders)` |
 | `t3`     | `run`         | T3 Code's `~\.t3\userdata\statev2.sqlite` → runs, threads, projects, messages | `Claude Code Opus 5.5 (medium) · watchme / Activity monitor · 4m 12s` |
@@ -50,14 +51,20 @@ Track and disc numbering changes are kept in `data.changes` but shortened to "nu
 ### Aurora NG and ratings
 
 Aurora NG keeps its own listening history and shares it with Aurora only through OneDrive, so
-Watchme reads its file directly. Its ratings are written into the MP3s and Music Library, which
-logs every change to an album's ratings in `rating_events`, whichever app made it. That log is per
-album (rated tracks, completeness and album rating before and after), not per track, so the report
-shows one line per album you rated in one sitting:
+Watchme reads its file directly. Since 0.27.0, Aurora NG also logs every rating and Love change it
+saves in `rating-log.sqlite3` (track, album, before and after), which Watchme reads as
+`aurora_ng/rating` events like `Rated Milk Inc. – Closer 4.5★ (was 3★)`.
+
+Music Library logs every change to an album's ratings in `rating_events`, whichever app made it
+(Aurora NG, Aurora, MusicBee...), but only per album: rated tracks, completeness and album rating
+before and after. The report shows one line per album you rated in one sitting. For Aurora NG
+ratings, Music Library's totals are added to Aurora NG's line; ratings from other apps get Music
+Library's line on its own:
 
 ```
 10:48–11:07  Aurora NG       Listened to Milk Inc. – Closer: 14 tracks, 14 counted as plays
-10:49–11:07  Music Library   Rated Milk Inc. – Closer (2003): 0 → 14 of 14 tracks rated, album rating 92
+10:49–11:07  Aurora NG       Rated 14 tracks on Milk Inc. – Closer: 5★ ×4, 4★ ×8, 3★ ×2; loved 1 · 0 → 14 of 14 tracks rated, album rating 92
+14:02–14:10  Music Library   Rated Antiloop – LP (1997): 0 → 12 of 12 tracks rated, album rating 86
 ```
 
 Listens are grouped per album folder, so guest artists ("feat. ...") stay on the album's line.
@@ -202,8 +209,8 @@ GROUP BY app ORDER BY minutes DESC;
 | `ignoreProcesses`     | Windows helper processes | Left out of process start/exit events |
 | `auroraEnabled`       | `true`  | Read Aurora's plays, tag edits and album additions |
 | `auroraDataDir`       | `null`  | Aurora's data folder; `null` means `%APPDATA%\com.soundtrackgeek.aurora` |
-| `auroraNgEnabled`     | `true`  | Read Aurora NG's listening history |
-| `auroraNgHistoryDb`   | `null`  | `null` means `%LOCALAPPDATA%\aurora_ng\aurora-history.sqlite3` |
+| `auroraNgEnabled`     | `true`  | Read Aurora NG's listening history and rating log |
+| `auroraNgDataDir`     | `null`  | Aurora NG's data folder; `null` means `%LOCALAPPDATA%\aurora_ng` |
 | `musicLibraryEnabled` | `true`  | Read rating changes from Music Library |
 | `musicLibraryDb`      | `null`  | `null` means `%APPDATA%\com.local.musiclibrary\music-library.sqlite3` |
 | `totalCommanderEnabled` | `true` | Read Total Commander's file operation log |

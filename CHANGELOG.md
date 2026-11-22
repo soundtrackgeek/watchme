@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.8.0] - 2026-11-22
+
+### Added
+
+- Aurora NG ratings: reads Aurora NG's rating log (0.27.0 and newer) as `aurora_ng/rating` events
+  naming the track and its rating or Love before and after.
+- Report: Aurora NG ratings are one line per album sitting with the stars given, and Music
+  Library's album totals for the same album are added to that line instead of shown twice.
+
+### Changed
+
+- Config: `auroraNgHistoryDb` is replaced by `auroraNgDataDir` (the folder holding both files).
+
 ## [0.7.0] - 2026-11-22
 
 ### Added

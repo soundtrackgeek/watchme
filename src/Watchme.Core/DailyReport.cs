@@ -224,10 +224,12 @@ public static class DailyReport
         var lines = AgentSessions(events.Where(e => e.Source == EventSources.T3 && e.Kind == "run").ToList(), spans)
             .ToList();
         lines.AddRange(GitLines(events.Where(e => e.Source == EventSources.Git).ToList()));
-        lines.AddRange(RatingLines(events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "rating").ToList()));
+        lines.AddRange(RatingLines(
+            events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "rating").ToList(),
+            events.Where(e => e.Source == EventSources.AuroraNg && e.Kind == "rating").ToList()));
         events = events
             .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git
-                        && !(e.Source == EventSources.MusicLibrary && e.Kind == "rating"))
+                        && !(e.Source is EventSources.MusicLibrary or EventSources.AuroraNg && e.Kind == "rating"))
             .ToList();
 
         for (var i = 0; i < events.Count; i++)
@@ -265,50 +267,130 @@ public static class DailyReport
         return lines.OrderBy(l => l.Ts).Select(l => l.Line).ToList();
     }
 
+    /// <summary>Rating changes on one album less than this far apart are one sitting.</summary>
+    public const long RatingSittingGapMs = 30 * 60 * 1000;
+
+    /// <summary>"4★", or "3.5★" for half stars set elsewhere; points are 0–100, 20 per star.</summary>
+    public static string Stars(int points) =>
+        $"{(points / 20.0).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}★";
+
     /// <summary>
-    /// Music Library rating events, one line per album and sitting (changes less than 30 minutes
-    /// apart): "Rated Milk Inc. – Closer (2003): 10 → 14 of 14 tracks rated, album rating 92 → 93".
+    /// Rating changes, one line per album and sitting. Aurora NG's log says which track got what:
+    /// "Rated 12 tracks on Antiloop – LP: 5★ ×3, 4★ ×9; loved 1". Music Library's log only has the
+    /// album's totals; they are added to Aurora NG's line for the same album, or shown on their own
+    /// for ratings made in other apps: "Rated Milk Inc. – Closer (2003): 10 → 14 of 14 tracks rated".
     /// </summary>
-    private static IEnumerable<(long Ts, string Line)> RatingLines(List<ActivityEvent> ratings)
+    private static IEnumerable<(long Ts, string Line)> RatingLines(List<ActivityEvent> library, List<ActivityEvent> auroraNg)
     {
+        var librarySittings = Sittings(library);
+        var shown = new HashSet<List<ActivityEvent>>();
+
+        foreach (var sitting in Sittings(auroraNg))
+        {
+            var (start, end) = (sitting[0].Ts, sitting[^1].Ts);
+            var albumId = Str(sitting[0].Data, "album_id");
+            // Music Library logs a change once it has read the MP3 again, a few seconds later.
+            var totals = librarySittings
+                .Where(s => !shown.Contains(s) && Str(s[0].Data, "album_id") == albumId
+                            && s[0].Ts <= end + 10 * 60 * 1000 && s[^1].Ts >= start - 60 * 1000)
+                .ToList();
+            shown.UnionWith(totals);
+            var summary = totals.Count == 0 ? "" : " · " + LibrarySummary(totals.SelectMany(s => s).OrderBy(e => e.Ts).ToList());
+            yield return (start, AuroraNgRatingLine(sitting) + summary);
+        }
+
         var source = EventSources.DisplayName(EventSources.MusicLibrary);
-        foreach (var album in ratings.GroupBy(e => Str(e.Data, "album_id")))
+        foreach (var sitting in librarySittings.Where(s => !shown.Contains(s)))
         {
-            var run = new List<ActivityEvent>();
-            foreach (var e in album.OrderBy(e => e.Ts))
+            var (first, last) = (sitting[0], sitting[^1]);
+            var line = sitting.Count == 1
+                ? $"{Time(first.Ts)}        {source,-15} {first.Title}"
+                : $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} Rated {LibraryAlbum(first)}: {LibrarySummary(sitting)}";
+            yield return (first.Ts, line);
+        }
+
+        static List<List<ActivityEvent>> Sittings(IEnumerable<ActivityEvent> events)
+        {
+            var sittings = new List<List<ActivityEvent>>();
+            foreach (var album in events.GroupBy(e => Str(e.Data, "album_id")))
             {
-                if (run.Count > 0 && e.Ts - run[^1].Ts > 30 * 60 * 1000)
+                var run = new List<ActivityEvent>();
+                foreach (var e in album.OrderBy(e => e.Ts))
                 {
-                    yield return Line(run);
-                    run = [];
+                    if (run.Count > 0 && e.Ts - run[^1].Ts > RatingSittingGapMs)
+                    {
+                        sittings.Add(run);
+                        run = [];
+                    }
+                    run.Add(e);
                 }
-                run.Add(e);
+                if (run.Count > 0)
+                    sittings.Add(run);
             }
-            if (run.Count > 0)
-                yield return Line(run);
+            return sittings;
         }
+    }
 
-        (long, string) Line(List<ActivityEvent> run)
+    private static int? Int(ActivityEvent e, string key) => e.Data?[key]?.GetValue<int>();
+
+    private static string LibraryAlbum(ActivityEvent e) =>
+        $"{Str(e.Data, "artist")} – {Str(e.Data, "album")}" + (Int(e, "year") is { } y ? $" ({y})" : "");
+
+    /// <summary>"10 → 14 of 14 tracks rated, album rating 92 → 93", over Music Library's events in order.</summary>
+    private static string LibrarySummary(List<ActivityEvent> run)
+    {
+        var (first, last) = (run[0], run[^1]);
+        var (before, after, total) = (Int(first, "rated_before") ?? 0, Int(last, "rated_after") ?? 0, Int(last, "tracks"));
+        var counts = before == after ? $"{after}" : $"{before} → {after}";
+        var text = $"{counts}{(total is null ? "" : $" of {total}")} tracks rated";
+        return text + (Int(first, "album_rating_before"), Int(last, "album_rating_after")) switch
         {
-            var (first, last) = (run[0], run[^1]);
-            if (run.Count == 1)
-                return (first.Ts, $"{Time(first.Ts)}        {source,-15} {first.Title}");
+            ({ } b, { } a) when b != a => $", album rating {b} → {a}",
+            (_, { } a) => $", album rating {a}",
+            _ => "",
+        };
+    }
 
-            int? Int(ActivityEvent e, string key) => e.Data?[key]?.GetValue<int>();
-            var name = $"{Str(first.Data, "artist")} – {Str(first.Data, "album")}"
-                       + (Int(first, "year") is { } y ? $" ({y})" : "");
-            var (before, after, total) = (Int(first, "rated_before") ?? 0, Int(last, "rated_after") ?? 0, Int(last, "tracks"));
-            var counts = before == after ? $"{after}" : $"{before} → {after}";
-            var what = $"Rated {name}: {counts}{(total is null ? "" : $" of {total}")} tracks rated";
-            var (ratingBefore, ratingAfter) = (Int(first, "album_rating_before"), Int(last, "album_rating_after"));
-            what += (ratingBefore, ratingAfter) switch
-            {
-                ({ } b, { } a) when b != a => $", album rating {b} → {a}",
-                (_, { } a) => $", album rating {a}",
-                _ => "",
-            };
-            return (first.Ts, $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} {what}");
-        }
+    /// <summary>One album sitting from Aurora NG's rating log; a track rated twice counts with its last rating.</summary>
+    private static string AuroraNgRatingLine(List<ActivityEvent> sitting)
+    {
+        var source = EventSources.DisplayName(EventSources.AuroraNg);
+        var (first, last) = (sitting[0], sitting[^1]);
+        if (sitting.Count == 1)
+            return $"{Time(first.Ts)}        {source,-15} {first.Title}";
+
+        var album = Str(first.Data, "album") ?? Path.GetFileName(Path.GetDirectoryName(Str(first.Data, "path")) ?? "?");
+        var artist = Str(first.Data, "album_artist")
+                     ?? sitting.GroupBy(e => Str(e.Data, "artist")).MaxBy(g => g.Count())!.Key;
+
+        var byTrack = sitting.GroupBy(e => Str(e.Data, "path")).ToList();
+        var rated = byTrack
+            .Where(t => t.Any(e => Int(e, "rating_before") != Int(e, "rating_after")))
+            .Select(t => Int(t.Last(), "rating_after"))
+            .ToList();
+        var stars = rated.OfType<int>()
+            .GroupBy(p => p)
+            .OrderByDescending(g => g.Key)
+            .Select(g => $"{Stars(g.Key)} ×{g.Count()}")
+            .ToList();
+        var cleared = rated.Count(p => p is null);
+        var loved = byTrack.Count(t => Str(t.First().Data, "love_before") != "loved" && Str(t.Last().Data, "love_after") == "loved");
+        var unloved = byTrack.Count(t => Str(t.First().Data, "love_before") == "loved" && Str(t.Last().Data, "love_after") != "loved");
+
+        var parts = new List<string>();
+        if (stars.Count > 0)
+            parts.Add(string.Join(", ", stars));
+        if (cleared > 0)
+            parts.Add($"cleared {cleared}");
+        if (loved > 0)
+            parts.Add($"loved {loved}");
+        if (unloved > 0)
+            parts.Add($"took Love from {unloved}");
+        var withStars = rated.Count - cleared;
+        var what = withStars > 0
+            ? $"Rated {withStars} {(withStars == 1 ? "track" : "tracks")} on {artist} – {album}: {string.Join("; ", parts)}"
+            : $"Changed ratings on {artist} – {album}: {string.Join("; ", parts)}";
+        return $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} {what}";
     }
 
     /// <summary>Commits to one branch more than this far apart get their own lines.</summary>
