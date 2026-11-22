@@ -183,16 +183,19 @@ public sealed class Database : IDisposable
 
     /// <summary>
     /// Where a scraper left off: the largest <c>ts</c> (or, with <paramref name="dataField"/>,
-    /// the largest numeric field in <c>data</c>) among this source's events of this kind.
+    /// the largest numeric field in <c>data</c>) among this source's events of this kind
+    /// (or of any kind, when <paramref name="kind"/> is null).
     /// </summary>
-    public long? Cursor(string source, string kind, string? dataField = null)
+    public long? Cursor(string source, string? kind, string? dataField = null)
     {
         using var cmd = _connection.CreateCommand();
+        var where = kind is null ? "source = $s" : "source = $s AND kind = $k";
         cmd.CommandText = dataField is null
-            ? "SELECT MAX(ts) FROM events WHERE source = $s AND kind = $k;"
-            : "SELECT MAX(CAST(json_extract(data, $path) AS INTEGER)) FROM events WHERE source = $s AND kind = $k;";
+            ? $"SELECT MAX(ts) FROM events WHERE {where};"
+            : $"SELECT MAX(CAST(json_extract(data, $path) AS INTEGER)) FROM events WHERE {where};";
         cmd.Parameters.AddWithValue("$s", source);
-        cmd.Parameters.AddWithValue("$k", kind);
+        if (kind is not null)
+            cmd.Parameters.AddWithValue("$k", kind);
         if (dataField is not null)
             cmd.Parameters.AddWithValue("$path", "$." + dataField);
         return cmd.ExecuteScalar() is long value ? value : null;

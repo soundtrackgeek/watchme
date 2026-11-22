@@ -223,7 +223,10 @@ public static class DailyReport
         // parallel threads interleave with each other and with everything else.
         var lines = AgentSessions(events.Where(e => e.Source == EventSources.T3 && e.Kind == "run").ToList(), spans)
             .ToList();
-        events = events.Where(e => !(e.Source == EventSources.T3 && e.Kind == "run")).ToList();
+        lines.AddRange(GitLines(events.Where(e => e.Source == EventSources.Git).ToList()));
+        events = events
+            .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git)
+            .ToList();
 
         for (var i = 0; i < events.Count; i++)
         {
@@ -253,6 +256,82 @@ public static class DailyReport
             i = j;
         }
         return lines.OrderBy(l => l.Ts).Select(l => l.Line).ToList();
+    }
+
+    /// <summary>Commits to one branch more than this far apart get their own lines.</summary>
+    public const long GitCommitGapMs = 30 * 60 * 1000;
+
+    /// <summary>
+    /// Git events as report lines. Commits to the same branch close together become one line
+    /// ("Committed 4 times to watchme (master): msg; msg; ..."), and a new folder that is made a repo
+    /// or cloned into within 10 minutes is shown as that one action.
+    /// </summary>
+    private static IEnumerable<(long Ts, string Line)> GitLines(List<ActivityEvent> git)
+    {
+        var source = EventSources.DisplayName(EventSources.Git);
+        var foldersShown = new HashSet<ActivityEvent>();
+        var initTitles = new Dictionary<ActivityEvent, string>();
+        foreach (var e in git.Where(e => e.Kind is "repo_init" or "clone"))
+        {
+            var folder = git.FirstOrDefault(f => f.Kind == "folder_created" && !foldersShown.Contains(f)
+                && string.Equals(Str(f.Data, "path"), Str(e.Data, "path"), StringComparison.OrdinalIgnoreCase)
+                && e.Ts - f.Ts is >= -5000 and <= 10 * 60 * 1000); // reflog times are whole seconds
+            if (folder is null)
+                continue;
+            foldersShown.Add(folder);
+            if (e.Kind == "repo_init")
+                initTitles[e] = $"{folder.Title} and started a git repo";
+        }
+
+        var runs = new List<List<ActivityEvent>>();
+        var byBranch = git
+            .Where(e => e.Kind == "commit")
+            .GroupBy(e => (Str(e.Data, "path"), Str(e.Data, "worktree"), Str(e.Data, "branch")));
+        foreach (var branch in byBranch)
+        {
+            foreach (var commit in branch.OrderBy(e => e.Ts))
+            {
+                if (runs.Count == 0 || !SameBranch(runs[^1][0], commit) || commit.Ts - runs[^1][^1].Ts > GitCommitGapMs)
+                    runs.Add([]);
+                runs[^1].Add(commit);
+            }
+        }
+
+        // A push of that branch during or shortly after a run of commits is shown on the commit line.
+        var pushed = new Dictionary<List<ActivityEvent>, string>();
+        var pushesShown = new HashSet<ActivityEvent>();
+        foreach (var run in runs)
+        {
+            var pushes = git.Where(p => p.Kind == "push" && !pushesShown.Contains(p) && SameBranch(run[0], p)
+                && p.Ts >= run[0].Ts && p.Ts - run[^1].Ts <= GitCommitGapMs).ToList();
+            if (pushes.Count == 0)
+                continue;
+            pushesShown.UnionWith(pushes);
+            pushed[run] = $"pushed to {string.Join(", ", pushes.Select(p => Str(p.Data, "remote")).Distinct())}";
+        }
+
+        foreach (var e in git.Where(e => e.Kind != "commit" && !foldersShown.Contains(e) && !pushesShown.Contains(e)))
+            yield return (e.Ts, $"{Time(e.Ts)}        {source,-15} {initTitles.GetValueOrDefault(e, e.Title ?? "")}");
+
+        foreach (var run in runs)
+        {
+            var first = run[0];
+            var push = pushed.GetValueOrDefault(run, "");
+            if (run.Count == 1)
+            {
+                yield return (first.Ts, $"{Time(first.Ts)}        {source,-15} {first.Title}{(push == "" ? "" : " · " + push)}");
+                continue;
+            }
+            var messages = string.Join("; ", run.Select(c => Str(c.Data, "message")));
+            var what = $"Committed {run.Count} times to {Str(first.Data, "repo")} ({Str(first.Data, "branch")}){(push == "" ? "" : ", " + push)}: {Trim(messages, 160)}";
+            yield return (first.Ts, $"{Time(first.Ts)}–{Time(run[^1].Ts)}  {source,-15} {what}");
+        }
+
+        // Pushes carry no worktree: the branch is what they share with commits.
+        static bool SameBranch(ActivityEvent a, ActivityEvent b) =>
+            string.Equals(Str(a.Data, "path"), Str(b.Data, "path"), StringComparison.OrdinalIgnoreCase)
+            && Str(a.Data, "branch") == Str(b.Data, "branch")
+            && (b.Kind == "push" || Str(a.Data, "worktree") == Str(b.Data, "worktree"));
     }
 
     /// <summary>Runs of one thread more than this far apart are separate sessions.</summary>

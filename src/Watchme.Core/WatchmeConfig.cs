@@ -48,6 +48,16 @@ public sealed class WatchmeConfig
     /// <summary>T3's state database; null means %USERPROFILE%\.t3\userdata\statev2.sqlite.</summary>
     public string? T3StateDb { get; set; }
 
+    /// <summary>Read commits, checkouts, pulls, pushes... from the reflogs of repos under <see cref="GitRoots"/>.</summary>
+    public bool GitEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Folders holding your repos (looked for up to two levels down). New folders directly inside
+    /// them are recorded too. Environment variables are expanded; missing folders are skipped.
+    /// </summary>
+    public List<string> GitRoots { get; set; } =
+        [@"C:\_code", @"C:\code", @"%USERPROFILE%\source\repos", @"%USERPROFILE%\code"];
+
     /// <summary>On first run, scrapers import this many days of history from apps.</summary>
     public int ScrapeBackfillDays { get; set; } = 7;
 

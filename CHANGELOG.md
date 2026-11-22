@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.6.0] - 2026-11-22
+
+### Added
+
+- Git scraper: reads the reflogs of repos under `gitRoots` (and their worktrees) without running
+  git, and records commits, pushes, pulls, merges, checkouts, resets, rebases and clones with
+  the branch they happened on. Also records new repos and new folders in those roots.
+- Report: commits to one branch close together become one line with the push that followed;
+  a new folder turned into a repo shows as "Created folder X and started a git repo".
+- Config: `gitEnabled`, `gitRoots`.
+
 ## [0.5.0] - 2026-11-22
 
 ### Added

@@ -31,10 +31,12 @@ public static class EventSources
     public const string Aurora = "aurora";
     public const string TotalCommander = "totalcmd";
     public const string T3 = "t3";
+    public const string Git = "git";
 
     /// <summary>How each source is named in reports.</summary>
     public static string DisplayName(string source) => source switch
     {
+        Git => "Git",
         Aurora => "Aurora",
         TotalCommander => "Total Commander",
         T3 => "T3 Code",

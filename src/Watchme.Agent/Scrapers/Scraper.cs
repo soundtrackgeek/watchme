@@ -19,7 +19,7 @@ internal sealed class ScrapeContext(Database watchme, long now)
     public long Now { get; } = now;
 
     /// <inheritdoc cref="Database.Cursor"/>
-    public long? Cursor(string source, string kind, string? dataField = null) =>
+    public long? Cursor(string source, string? kind, string? dataField = null) =>
         watchme.Cursor(source, kind, dataField);
 
     /// <inheritdoc cref="Database.LatestData"/>

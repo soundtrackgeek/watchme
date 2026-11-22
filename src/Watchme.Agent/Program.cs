@@ -78,7 +78,9 @@ namespace Watchme.Agent
                     Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".t3", "userdata", "statev2.sqlite");
                 scrapers.Add(new T3Scraper(state, config.ScrapeBackfillDays));
             }
-            var scraperHost = new ScraperHost(scrapers, Paths.Database, writer.Post);
+            if (config.GitEnabled)
+                scrapers.Add(new GitScraper(() => config.GitRoots, config.ScrapeBackfillDays));
+            var scraperHost =new ScraperHost(scrapers, Paths.Database, writer.Post);
 
             var collectors = new[]
             {

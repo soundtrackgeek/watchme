@@ -10,7 +10,7 @@ so it can tell you not just *that* you used an app but *what you did* in it.
 This is a layered plan:
 
 1. **Focus, idle, sessions and processes** — works for every app with no per-app code.
-2. **App-native data sources** — Aurora, Total Commander and T3 Code sessions so far; next git.
+2. **App-native data sources** — Aurora, Total Commander, T3 Code sessions and git.
 3. A local endpoint your own apps can push events to.
 4. OS-level file attribution (ETW) and UI Automation scraping where nothing else works.
 
@@ -40,6 +40,8 @@ last `scrapeBackfillDays` days.
 | `aurora` | `album_added` | `aurora-state.sqlite3` → `album_additions` | `Added album Antiloop - LP (1997)` |
 | `totalcmd` | `file_op`   | Total Commander's log file (path read from `wincmd.ini`) | `Copied 3 items from c:\photos to d:\backup\photos (created 2 folders)` |
 | `t3`     | `run`         | T3 Code's `~\.t3\userdata\statev2.sqlite` → runs, threads, projects, messages | `Claude Code Opus 5.5 (medium) · watchme / Activity monitor · 4m 12s` |
+| `git`    | `commit` / `push` / `pull` / `merge` / `checkout` / `reset` / `rebase` / `clone` | Reflogs (`.git/logs/HEAD`, worktrees, `logs/refs/remotes`) of repos under `gitRoots` | `Committed to watchme (master): Add T3 Code scraper` |
+| `git`    | `repo_init` / `folder_created` | Creation time of `.git` / of folders directly inside `gitRoots` | `Created folder watchme in C:\_code` |
 
 Track and disc numbering changes are kept in `data.changes` but shortened to "numbering" in titles.
 
@@ -61,6 +63,23 @@ minutes between them are one session; subagent runs are left out, because they o
 *agent* is the time models spent working. *you* is the time that thread's window was in front,
 from 5 minutes before the first prompt until 10 minutes after the last answer. It is matched on
 the window title, which T3 sets to `project / thread`.
+
+### Git
+
+Git writes a line to a repo's *reflog* for everything that moves `HEAD`, with the time you did it,
+and another for each push. Watchme reads those files directly, without running git: repos are
+looked for in the `gitRoots` folders and one level below them, every 10 minutes, and new reflog
+lines are read every minute. Worktrees, including those T3 and Codex create elsewhere, are read
+through their main repo. Commit lines don't name the branch, so it is recovered by replaying the
+checkouts. Credentials in clone URLs are dropped.
+
+In the report, commits to one branch less than 30 minutes apart become one line, with the push
+that followed. A new folder that became a repo within 10 minutes is shown as one action:
+
+```
+13:21        Git             Created folder watchme in C:\_code and started a git repo
+13:21–14:17  Git             Committed 6 times to watchme (master), pushed to origin: Initial commit; ...
+```
 
 ### Total Commander setup
 
@@ -170,6 +189,8 @@ GROUP BY app ORDER BY minutes DESC;
 | `totalCommanderIni`   | `null`  | Path to `wincmd.ini`; `null` means `%APPDATA%\GHISLER\wincmd.ini` |
 | `t3Enabled`           | `true`  | Read T3 Code runs (Claude Code, Codex, Antigravity...) |
 | `t3StateDb`           | `null`  | T3's state database; `null` means `%USERPROFILE%\.t3\userdata\statev2.sqlite` |
+| `gitEnabled`          | `true`  | Read git reflogs and new folders |
+| `gitRoots`            | `C:\_code`, `C:\code`, `%USERPROFILE%\source\repos`, `%USERPROFILE%\code` | Folders holding your repos; missing ones are skipped |
 | `scrapeBackfillDays`  | 7       | History imported from apps on first run |
 
 Settings missing from an older `config.json` use their defaults.
