@@ -72,6 +72,12 @@ namespace Watchme.Agent
                 // Re-read the ini every scrape, so turning TC's logging on or moving the file just works.
                 scrapers.Add(new TotalCommanderScraper(() => TotalCommanderScraper.LogPathFromIni(ini), config.ScrapeBackfillDays));
             }
+            if (config.T3Enabled)
+            {
+                var state = config.T3StateDb ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".t3", "userdata", "statev2.sqlite");
+                scrapers.Add(new T3Scraper(state, config.ScrapeBackfillDays));
+            }
             var scraperHost = new ScraperHost(scrapers, Paths.Database, writer.Post);
 
             var collectors = new[]

@@ -42,6 +42,12 @@ public sealed class WatchmeConfig
     /// <summary>Path to wincmd.ini, where the log file location is read from; null means %APPDATA%\GHISLER\wincmd.ini.</summary>
     public string? TotalCommanderIni { get; set; }
 
+    /// <summary>Read T3 Code runs (prompts, models, timing) for Claude Code, Codex, Antigravity...</summary>
+    public bool T3Enabled { get; set; } = true;
+
+    /// <summary>T3's state database; null means %USERPROFILE%\.t3\userdata\statev2.sqlite.</summary>
+    public string? T3StateDb { get; set; }
+
     /// <summary>On first run, scrapers import this many days of history from apps.</summary>
     public int ScrapeBackfillDays { get; set; } = 7;
 

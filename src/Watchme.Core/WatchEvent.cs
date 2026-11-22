@@ -30,12 +30,14 @@ public static class EventSources
     public const string Agent = "agent";
     public const string Aurora = "aurora";
     public const string TotalCommander = "totalcmd";
+    public const string T3 = "t3";
 
     /// <summary>How each source is named in reports.</summary>
     public static string DisplayName(string source) => source switch
     {
         Aurora => "Aurora",
         TotalCommander => "Total Commander",
+        T3 => "T3 Code",
         _ => source.Length == 0 ? source : char.ToUpperInvariant(source[0]) + source[1..],
     };
 

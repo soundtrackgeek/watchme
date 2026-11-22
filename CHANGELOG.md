@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.5.0] - 2026-11-22
+
+### Added
+
+- T3 Code scraper: one event per finished run (prompt) for every provider (Claude Code, Codex,
+  Antigravity, ACP agents) with model, effort, fast mode, project, thread, branch, duration,
+  status, subagent flag and the start of the prompt.
+- Report groups runs into thread sessions: prompts, models, agent working time and the time
+  that thread's window was in front of you.
+- Config: `t3Enabled`, `t3StateDb`.
+
+### Fixed
+
+- README scrapers table was split in two by a blank line.
+
 ## [0.4.0] - 2026-11-22
 
 ### Added

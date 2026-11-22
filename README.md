@@ -10,7 +10,7 @@ so it can tell you not just *that* you used an app but *what you did* in it.
 This is a layered plan:
 
 1. **Focus, idle, sessions and processes** — works for every app with no per-app code.
-2. **App-native data sources** — Aurora and Total Commander so far; next git and Claude/T3 sessions.
+2. **App-native data sources** — Aurora, Total Commander and T3 Code sessions so far; next git.
 3. A local endpoint your own apps can push events to.
 4. OS-level file attribution (ETW) and UI Automation scraping where nothing else works.
 
@@ -38,10 +38,29 @@ last `scrapeBackfillDays` days.
 | `aurora` | `listen`      | `aurora-history.sqlite3` → `listening_sessions` | `Bad Manners – Lorraine` (data: album, genre, listened seconds, play/skip) |
 | `aurora` | `tag_edit`    | `aurora-state.sqlite3` → `tag_edit_operations`, grouped per album folder | `Changed genre Reggaeton → Reggaetón on Daddy Yankee – King Daddy (11 tracks)` |
 | `aurora` | `album_added` | `aurora-state.sqlite3` → `album_additions` | `Added album Antiloop - LP (1997)` |
-
 | `totalcmd` | `file_op`   | Total Commander's log file (path read from `wincmd.ini`) | `Copied 3 items from c:\photos to d:\backup\photos (created 2 folders)` |
+| `t3`     | `run`         | T3 Code's `~\.t3\userdata\statev2.sqlite` → runs, threads, projects, messages | `Claude Code Opus 5.5 (medium) · watchme / Activity monitor · 4m 12s` |
 
 Track and disc numbering changes are kept in `data.changes` but shortened to "numbering" in titles.
+
+### T3 Code sessions
+
+Each `t3/run` is one prompt and the agent work that followed, for every provider T3 drives
+(Claude Code, Codex, Antigravity, ACP agents). The event time is when the agent started; `data`
+holds the provider, model, effort (`effort`, `reasoningEffort` or `thought_level`), fast mode,
+project, workspace, branch, thread, duration, status, whether it was a subagent, and the first
+200 characters of your prompt (images become `[image]`).
+
+The report turns runs into one line per thread session. Runs in the same thread with less than 30
+minutes between them are one session; subagent runs are left out, because they overlap their parent:
+
+```
+13:28–14:09  T3 Code         watchme / Activity monitor: 7 prompts, Opus 5.5 (medium), agent 26m 26s, you 20m 42s
+```
+
+*agent* is the time models spent working. *you* is the time that thread's window was in front,
+from 5 minutes before the first prompt until 10 minutes after the last answer. It is matched on
+the window title, which T3 sets to `project / thread`.
 
 ### Total Commander setup
 
@@ -149,6 +168,8 @@ GROUP BY app ORDER BY minutes DESC;
 | `auroraDataDir`       | `null`  | Aurora's data folder; `null` means `%APPDATA%\com.soundtrackgeek.aurora` |
 | `totalCommanderEnabled` | `true` | Read Total Commander's file operation log |
 | `totalCommanderIni`   | `null`  | Path to `wincmd.ini`; `null` means `%APPDATA%\GHISLER\wincmd.ini` |
+| `t3Enabled`           | `true`  | Read T3 Code runs (Claude Code, Codex, Antigravity...) |
+| `t3StateDb`           | `null`  | T3's state database; `null` means `%USERPROFILE%\.t3\userdata\statev2.sqlite` |
 | `scrapeBackfillDays`  | 7       | History imported from apps on first run |
 
 Settings missing from an older `config.json` use their defaults.

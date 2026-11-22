@@ -166,7 +166,7 @@ public static class DailyReport
         if (shortBlocks.Count > 0)
             output.WriteLine($"  + {shortBlocks.Count} shorter visits, {Duration(shortBlocks.Sum(b => b.ActiveMs))} in total");
 
-        var activity = LoadActivity(db, from, to);
+        var activity = LoadActivity(db, from, to, spans);
         if (activity.Count > 0)
         {
             output.WriteLine();
@@ -191,7 +191,7 @@ public static class DailyReport
     /// Events scraped from apps, as report lines. Consecutive listens to the same album become one
     /// line ("Listened to X – Y: 9 tracks"); everything else is printed with its own title.
     /// </summary>
-    public static List<string> LoadActivity(Database db, long fromMs, long toMs)
+    public static List<string> LoadActivity(Database db, long fromMs, long toMs, IReadOnlyList<Span>? spans = null)
     {
         using var cmd = db.Connection.CreateCommand();
         var builtin = string.Join(", ", EventSources.Builtin.Select(s => $"'{s}'"));
@@ -219,14 +219,19 @@ public static class DailyReport
             }
         }
 
-        var lines = new List<string>();
+        // T3 runs become one line per thread session; collected separately because runs in
+        // parallel threads interleave with each other and with everything else.
+        var lines = AgentSessions(events.Where(e => e.Source == EventSources.T3 && e.Kind == "run").ToList(), spans)
+            .ToList();
+        events = events.Where(e => !(e.Source == EventSources.T3 && e.Kind == "run")).ToList();
+
         for (var i = 0; i < events.Count; i++)
         {
             var e = events[i];
             var source = EventSources.DisplayName(e.Source);
             if (e.Kind != "listen")
             {
-                lines.Add($"{Time(e.Ts)}        {source,-15} {e.Title}");
+                lines.Add((e.Ts, $"{Time(e.Ts)}        {source,-15} {e.Title}"));
                 continue;
             }
 
@@ -244,10 +249,80 @@ public static class DailyReport
             var what = run.Count == 1
                 ? $"Listened to {e.Title}{(album is null ? "" : $" ({album})")}{(plays == 0 ? ", skipped" : "")}"
                 : $"Listened to {artist} – {album}: {run.Count} tracks, {plays} counted as plays";
-            lines.Add($"{Time(e.Ts)}–{Time(end)}  {source,-15} {what}");
+            lines.Add((e.Ts, $"{Time(e.Ts)}–{Time(end)}  {source,-15} {what}"));
             i = j;
         }
-        return lines;
+        return lines.OrderBy(l => l.Ts).Select(l => l.Line).ToList();
+    }
+
+    /// <summary>Runs of one thread more than this far apart are separate sessions.</summary>
+    public const long AgentSessionGapMs = 30 * 60 * 1000;
+
+    /// <summary>
+    /// Groups T3 runs into sessions per thread: "watchme / Activity monitor: 7 prompts,
+    /// Opus 5.5 (medium), agent 32m, you 12m". "agent" is the time models spent working;
+    /// "you" is the time that thread's window was in front of you (its title is "project / thread").
+    /// Subagent runs overlap their parent's and are left out.
+    /// </summary>
+    private static IEnumerable<(long Ts, string Line)> AgentSessions(List<ActivityEvent> runs, IReadOnlyList<Span>? spans)
+    {
+        var byThread = runs
+            .Where(r => r.Data?["subagent"]?.GetValue<bool>() != true)
+            .GroupBy(r => Str(r.Data, "thread_id") ?? r.Title ?? "");
+
+        foreach (var thread in byThread)
+        {
+            var session = new List<ActivityEvent>();
+            foreach (var run in thread.OrderBy(r => r.Ts))
+            {
+                if (session.Count > 0 && run.Ts - End(session[^1]) > AgentSessionGapMs)
+                {
+                    yield return SessionLine(session, spans);
+                    session = [];
+                }
+                session.Add(run);
+            }
+            if (session.Count > 0)
+                yield return SessionLine(session, spans);
+        }
+
+        static long End(ActivityEvent run) => run.Data?["completed_ts"]?.GetValue<long>() ?? run.Ts;
+    }
+
+    private static (long Ts, string Line) SessionLine(List<ActivityEvent> session, IReadOnlyList<Span>? spans)
+    {
+        var first = session[0];
+        var start = first.Ts;
+        var end = session.Max(r => r.Data?["completed_ts"]?.GetValue<long>() ?? r.Ts);
+        var project = Str(first.Data, "project");
+        var thread = Str(session[^1].Data, "thread");
+        var where = project is null ? thread : $"{project} / {thread}";
+
+        var busyMs = session.Sum(r => (r.Data?["duration_s"]?.GetValue<long>() ?? 0) * 1000);
+        var models = session
+            .Select(r => Str(r.Data, "model_label") + (Str(r.Data, "effort") is { } e ? $" ({e})" : ""))
+            .Distinct()
+            .ToList();
+        var prompts = session.Count == 1 ? "1 prompt" : $"{session.Count} prompts";
+        var failed = session.Count(r => Str(r.Data, "status") is not (null or "completed"));
+
+        var line = $"{where}: {prompts}, {string.Join(" + ", models)}, agent {Duration(busyMs)}";
+        if (spans is not null && where is not null)
+        {
+            // Time this thread's window was in front, from just before the first prompt until a
+            // little after the last answer (reading the result counts too).
+            var windowFrom = start - 5 * 60 * 1000;
+            var windowTo = end + 10 * 60 * 1000;
+            var youMs = spans
+                .Where(s => s.Title == where && s.App.StartsWith("T3 Code", StringComparison.OrdinalIgnoreCase))
+                .Sum(s => Math.Max(0, Math.Min(s.End, windowTo) - Math.Max(s.Start, windowFrom)));
+            if (youMs > 0)
+                line += $", you {Duration(youMs)}";
+        }
+        if (failed > 0)
+            line += $" ({failed} not completed)";
+
+        return (start, $"{Time(start)}–{Time(end)}  {EventSources.DisplayName(EventSources.T3),-15} {line}");
     }
 
     private static string? Str(JsonObject? obj, string key) => obj?[key] is JsonValue v ? v.ToString() : null;
