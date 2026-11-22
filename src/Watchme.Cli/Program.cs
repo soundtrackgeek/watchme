@@ -16,6 +16,7 @@ try
         "uninstall" => AgentControl.Uninstall(),
         "start" => AgentControl.Start(),
         "stop" => AgentControl.Stop(),
+        "powershell" or "pwsh" => PowerShellCommand.Run(args.Skip(1).FirstOrDefault()),
         "help" or "-h" or "--help" or "/?" => Help(),
         _ => Help(unknown: command),
     };
@@ -66,6 +67,7 @@ static int Help(string? unknown = null)
           watchme install                               Start the agent at every Windows logon (and now),
                                                         and add watchme to your user PATH
           watchme uninstall                             Undo install and stop the agent (data is kept)
+          watchme powershell install|uninstall|status   Log the commands you run in PowerShell 7
 
         Data:   %LOCALAPPDATA%\Watchme\watchme.db (override with WATCHME_HOME)
         Config: %LOCALAPPDATA%\Watchme\config.json

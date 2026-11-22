@@ -92,7 +92,9 @@ namespace Watchme.Agent
             }
             if (config.GitEnabled)
                 scrapers.Add(new GitScraper(() => config.GitRoots, config.ScrapeBackfillDays));
-            var scraperHost =new ScraperHost(scrapers, Paths.Database, writer.Post);
+            if (config.PowerShellEnabled)
+                scrapers.Add(new PowerShellScraper(Paths.Inbox, config.ScrapeBackfillDays));
+            var scraperHost = new ScraperHost(scrapers, Paths.Database, writer.Post);
 
             var collectors = new[]
             {

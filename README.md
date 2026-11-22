@@ -105,6 +105,40 @@ that followed. A new folder that became a repo within 10 minutes is shown as one
 13:21–14:17  Git             Committed 6 times to watchme (master), pushed to origin: Initial commit; ...
 ```
 
+### PowerShell commands
+
+PowerShell keeps no timestamped log of what you run, so Watchme adds one. Run once:
+
+```powershell
+watchme powershell install
+```
+
+This writes a small hook script to `%LOCALAPPDATA%\Watchme\hooks\powershell.ps1` and adds three
+marked lines to the end of your PowerShell 7 profile (`$PROFILE`, the one Windows Terminal uses)
+that load it. A backup of the profile as it was is kept next to it as `.watchme-backup`. Open a
+new tab to start logging. `watchme powershell status` shows whether it is set up and how many
+commands were logged today, and `watchme powershell uninstall` (or `watchme uninstall`) removes it.
+
+The hook wraps your `prompt` function, which PowerShell runs after every command, so prompts from
+oh-my-posh, Starship and the like keep working. For each command it appends one JSON line to
+`%LOCALAPPDATA%\Watchme\inbox\powershell-YYYY-MM-DD.jsonl` with the command, the folder it ran
+in, start and end time, whether it succeeded, and `$LASTEXITCODE`. The agent reads the inbox
+every 30 seconds, and lines written while it is stopped are read later. Inbox files are deleted
+after 30 days.
+
+- Commands that **start with a space**, or mention passwords, secrets, tokens, API keys,
+  credentials, connection strings or `-AsPlainText`, are logged as `[hidden]`.
+- Windows PowerShell 5.1 and shells started with `-NoProfile` (as tools and scripts often are)
+  are not logged.
+
+In the report, the commands of one tab become one line per sitting (30 minutes apart start a new
+one), with the folder, how many failed and the programs used most:
+
+```
+14:02–14:40  PowerShell      in C:\_code\watchme: 23 commands, 2 failed: dotnet ×6, git ×5, watchme ×4
+15:10        PowerShell      C:\_code\site> npm run build (failed, exit 2)
+```
+
 ### Total Commander setup
 
 Turn on *Configuration → Options → Log file → Create a log file*, with the operations you want
@@ -151,6 +185,7 @@ watchme report [today|yesterday|YYYY-MM-DD]   Summary of a day (default: today)
 watchme status                                Is the agent running, and what has it recorded?
 watchme start | stop                          Start or stop the background agent
 watchme install | uninstall                   Start at every logon and add to PATH (or undo both)
+watchme powershell install|uninstall|status   Log the commands you run in PowerShell 7
 ```
 
 Example report:
@@ -219,6 +254,7 @@ GROUP BY app ORDER BY minutes DESC;
 | `t3StateDb`           | `null`  | T3's state database; `null` means `%USERPROFILE%\.t3\userdata\statev2.sqlite` |
 | `gitEnabled`          | `true`  | Read git reflogs and new folders |
 | `gitRoots`            | `C:\_code`, `C:\code`, `%USERPROFILE%\source\repos`, `%USERPROFILE%\code` | Folders holding your repos; missing ones are skipped |
+| `powerShellEnabled`   | `true`  | Read the commands logged by `watchme powershell install` |
 | `scrapeBackfillDays`  | 7       | History imported from apps on first run |
 
 Settings missing from an older `config.json` use their defaults.

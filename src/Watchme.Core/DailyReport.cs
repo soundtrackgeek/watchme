@@ -224,11 +224,13 @@ public static class DailyReport
         var lines = AgentSessions(events.Where(e => e.Source == EventSources.T3 && e.Kind == "run").ToList(), spans)
             .ToList();
         lines.AddRange(GitLines(events.Where(e => e.Source == EventSources.Git).ToList()));
+        lines.AddRange(PowerShellLines(events.Where(e => e.Source == EventSources.PowerShell && e.Kind == "command").ToList()));
         lines.AddRange(RatingLines(
             events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "rating").ToList(),
             events.Where(e => e.Source == EventSources.AuroraNg && e.Kind == "rating").ToList()));
         events = events
             .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git
+                        && !(e.Source == EventSources.PowerShell && e.Kind == "command")
                         && !(e.Source is EventSources.MusicLibrary or EventSources.AuroraNg && e.Kind == "rating"))
             .ToList();
 
@@ -391,6 +393,106 @@ public static class DailyReport
             ? $"Rated {withStars} {(withStars == 1 ? "track" : "tracks")} on {artist} – {album}: {string.Join("; ", parts)}"
             : $"Changed ratings on {artist} – {album}: {string.Join("; ", parts)}";
         return $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} {what}";
+    }
+
+    /// <summary>Commands in one PowerShell tab more than this far apart are separate sessions.</summary>
+    public const long ShellSessionGapMs = 30 * 60 * 1000;
+
+    /// <summary>
+    /// PowerShell commands, one line per tab and session: "in C:\_code\watchme: 23 commands,
+    /// 2 failed, mostly dotnet ×6, git ×5, watchme ×4". A lone command is shown as itself.
+    /// </summary>
+    private static IEnumerable<(long Ts, string Line)> PowerShellLines(List<ActivityEvent> commands)
+    {
+        var source = EventSources.DisplayName(EventSources.PowerShell);
+        foreach (var tab in commands.GroupBy(e => (Str(e.Data, "session"), Str(e.Data, "pid"))))
+        {
+            var session = new List<ActivityEvent>();
+            foreach (var cmd in tab.OrderBy(e => e.Ts))
+            {
+                if (session.Count > 0 && cmd.Ts - End(session[^1]) > ShellSessionGapMs)
+                {
+                    yield return Line(session);
+                    session = [];
+                }
+                session.Add(cmd);
+            }
+            if (session.Count > 0)
+                yield return Line(session);
+        }
+
+        (long, string) Line(List<ActivityEvent> session)
+        {
+            var first = session[0];
+            if (session.Count == 1)
+            {
+                var where = Str(first.Data, "cwd") is { } cwd ? $"{cwd}> " : "";
+                return (first.Ts, $"{Time(first.Ts)}        {source,-15} {where}{first.Title}{Outcome(first)}");
+            }
+
+            var folders = session.GroupBy(e => Str(e.Data, "cwd") ?? "?", StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Count()).Select(g => g.Key).ToList();
+            var place = folders.Count == 1 ? folders[0] : $"{folders[0]} (+{folders.Count - 1} more {(folders.Count == 2 ? "folder" : "folders")})";
+            var failed = session.Count(e => Failed(e));
+            var tools = session.Select(e => ToolName(Str(e.Data, "cmd")))
+                .Where(t => t is not null)
+                .GroupBy(t => t!, StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                .Take(5)
+                .Select(g => g.Count() == 1 ? g.Key : $"{g.Key} ×{g.Count()}")
+                .ToList();
+            var line = $"in {place}: {session.Count} commands";
+            if (failed > 0)
+                line += $", {failed} failed";
+            if (tools.Count > 0)
+                line += ": " + string.Join(", ", tools);
+            var end = session.Max(End);
+            return (first.Ts, $"{Time(first.Ts)}–{Time(end)}  {source,-15} {line}");
+        }
+
+        static long End(ActivityEvent e) => e.Data?["end_ts"]?.GetValue<long>() ?? e.Ts;
+
+        static bool Failed(ActivityEvent e) =>
+            e.Data?["ok"] is JsonValue ok && ok.TryGetValue<bool>(out var b) && !b;
+
+        static string Outcome(ActivityEvent e)
+        {
+            if (Str(e.Data, "status") == "Stopped")
+                return " (stopped)";
+            if (!Failed(e))
+                return "";
+            return Str(e.Data, "exit_code") is { } code and not "0" ? $" (failed, exit {code})" : " (failed)";
+        }
+    }
+
+    /// <summary>
+    /// The program or cmdlet a command line starts with: "git" for "git push", "build.ps1" for
+    /// "&amp; '.\build.ps1' -x", "dotnet" for "C:\...\dotnet.exe test". Null for hidden commands.
+    /// </summary>
+    public static string? ToolName(string? cmd)
+    {
+        if (string.IsNullOrWhiteSpace(cmd) || cmd == "[hidden]")
+            return null;
+        var s = cmd.TrimStart();
+        if (s.StartsWith("& ", StringComparison.Ordinal) || s.StartsWith(". ", StringComparison.Ordinal))
+            s = s[2..].TrimStart();
+        string token;
+        if (s.Length > 0 && s[0] is '\'' or '"')
+        {
+            var close = s.IndexOf(s[0], 1);
+            token = close < 0 ? s[1..] : s[1..close];
+        }
+        else
+        {
+            var stop = s.IndexOfAny([' ', '\t', '|', ';', '(', '{', '\r', '\n']);
+            token = stop < 0 ? s : s[..stop];
+        }
+        if (token.Length == 0)
+            return null;
+        var name = token.Contains('\\') || token.Contains('/') ? token[(token.LastIndexOfAny(['\\', '/']) + 1)..] : token;
+        if (name.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+            name = name[..^4];
+        return name.Length == 0 ? null : name;
     }
 
     /// <summary>Commits to one branch more than this far apart get their own lines.</summary>

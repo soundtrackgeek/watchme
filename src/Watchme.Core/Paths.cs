@@ -12,6 +12,12 @@ public static class Paths
     public static string Config => Path.Combine(DataDir, "config.json");
     public static string Log => Path.Combine(DataDir, "agent.log");
 
+    /// <summary>Where shell hooks drop events (JSON lines) for the agent to read.</summary>
+    public static string Inbox => Path.Combine(DataDir, "inbox");
+
+    /// <summary>Scripts that shells load from their profiles (see <c>watchme powershell install</c>).</summary>
+    public static string Hooks => Path.Combine(DataDir, "hooks");
+
     public static void EnsureDataDir() => Directory.CreateDirectory(DataDir);
 }
 

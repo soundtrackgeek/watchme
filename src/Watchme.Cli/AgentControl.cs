@@ -37,6 +37,8 @@ internal static class AgentControl
 
         if (UserPath.Add(InstallDir))
             Console.WriteLine($"Added to your PATH: {InstallDir}");
+        // Keep an installed PowerShell hook in step with this version.
+        PowerShellCommand.RefreshScript();
         if (!UserPath.InCurrentProcess(InstallDir))
             Console.WriteLine("Open a new terminal to use 'watchme' from anywhere.");
 
@@ -50,6 +52,8 @@ internal static class AgentControl
         Console.WriteLine("Removed from logon startup.");
         if (UserPath.Remove(InstallDir))
             Console.WriteLine($"Removed from your PATH: {InstallDir}");
+        if (PowerShellHook.HasBlock(PowerShellHook.ReadProfile(PowerShellHook.DefaultProfilePath).Text))
+            PowerShellCommand.Uninstall();
         Stop();
         Console.WriteLine($"Your data is kept in {Paths.DataDir}.");
         return 0;

@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.9.0] - 2026-11-22
+
+### Added
+
+- PowerShell commands: `watchme powershell install|uninstall|status` adds a hook to your
+  PowerShell 7 profile that logs every command (text, folder, timing, success, exit code) to
+  Watchme's inbox; the agent reads it as `powershell/command` events. Commands starting with a
+  space or mentioning secrets are logged as `[hidden]`.
+- Report: PowerShell commands are one line per tab and sitting, with folder, failures and the
+  programs used most.
+- Config: `powerShellEnabled`.
+
+### Changed
+
+- `watchme install` refreshes an installed PowerShell hook; `watchme uninstall` removes it.
+
 ## [0.8.0] - 2026-11-22
 
 ### Added

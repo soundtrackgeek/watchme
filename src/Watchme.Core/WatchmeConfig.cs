@@ -70,6 +70,9 @@ public sealed class WatchmeConfig
     public List<string> GitRoots { get; set; } =
         [@"C:\_code", @"C:\code", @"%USERPROFILE%\source\repos", @"%USERPROFILE%\code"];
 
+    /// <summary>Read the commands you run in PowerShell, logged by the hook from <c>watchme powershell install</c>.</summary>
+    public bool PowerShellEnabled { get; set; } = true;
+
     /// <summary>On first run, scrapers import this many days of history from apps.</summary>
     public int ScrapeBackfillDays { get; set; } = 7;
 
