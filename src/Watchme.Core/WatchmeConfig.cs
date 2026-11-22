@@ -36,6 +36,12 @@ public sealed class WatchmeConfig
     /// <summary>Aurora's data folder; null means %APPDATA%\com.soundtrackgeek.aurora.</summary>
     public string? AuroraDataDir { get; set; }
 
+    /// <summary>Read file operations from Total Commander's log file (enable it under Configuration → Log file).</summary>
+    public bool TotalCommanderEnabled { get; set; } = true;
+
+    /// <summary>Path to wincmd.ini, where the log file location is read from; null means %APPDATA%\GHISLER\wincmd.ini.</summary>
+    public string? TotalCommanderIni { get; set; }
+
     /// <summary>On first run, scrapers import this many days of history from apps.</summary>
     public int ScrapeBackfillDays { get; set; } = 7;
 

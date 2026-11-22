@@ -198,6 +198,16 @@ public sealed class Database : IDisposable
         return cmd.ExecuteScalar() is long value ? value : null;
     }
 
+    /// <summary>The <c>data</c> JSON of this source's most recent event, for scrapers that need a richer cursor.</summary>
+    public string? LatestData(string source, string kind)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT data FROM events WHERE source = $s AND kind = $k ORDER BY ts DESC, id DESC LIMIT 1;";
+        cmd.Parameters.AddWithValue("$s", source);
+        cmd.Parameters.AddWithValue("$k", kind);
+        return cmd.ExecuteScalar() as string;
+    }
+
     public void Execute(string sql, SqliteTransaction? tx = null)
     {
         using var cmd = _connection.CreateCommand();

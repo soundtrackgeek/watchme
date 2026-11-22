@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.4.0] - 2026-11-22
+
+### Added
+
+- Total Commander scraper: reads the file operation log (location from `wincmd.ini`, including
+  rotated copies) and records copies, moves, renames, deletes and folder changes. Related lines
+  are grouped into one action, e.g. a whole folder copy; errors are called out in the title.
+- Config: `totalCommanderEnabled`, `totalCommanderIni`.
+- Report shows friendly source names (e.g. "Total Commander").
+
+### Fixed
+
+- Scrapers no longer re-send (and log) events they already sent this session when re-reading
+  an overlapping window.
+
 ## [0.3.0] - 2026-11-22
 
 ### Added

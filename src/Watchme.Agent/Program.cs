@@ -65,6 +65,13 @@ namespace Watchme.Agent
                     Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "com.soundtrackgeek.aurora");
                 scrapers.Add(new AuroraScraper(auroraDir, config.ScrapeBackfillDays));
             }
+            if (config.TotalCommanderEnabled)
+            {
+                var ini = config.TotalCommanderIni ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GHISLER", "wincmd.ini");
+                // Re-read the ini every scrape, so turning TC's logging on or moving the file just works.
+                scrapers.Add(new TotalCommanderScraper(() => TotalCommanderScraper.LogPathFromIni(ini), config.ScrapeBackfillDays));
+            }
             var scraperHost = new ScraperHost(scrapers, Paths.Database, writer.Post);
 
             var collectors = new[]

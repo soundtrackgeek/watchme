@@ -223,10 +223,10 @@ public static class DailyReport
         for (var i = 0; i < events.Count; i++)
         {
             var e = events[i];
-            var source = Capitalize(e.Source);
+            var source = EventSources.DisplayName(e.Source);
             if (e.Kind != "listen")
             {
-                lines.Add($"{Time(e.Ts)}        {source,-8} {e.Title}");
+                lines.Add($"{Time(e.Ts)}        {source,-15} {e.Title}");
                 continue;
             }
 
@@ -244,15 +244,13 @@ public static class DailyReport
             var what = run.Count == 1
                 ? $"Listened to {e.Title}{(album is null ? "" : $" ({album})")}{(plays == 0 ? ", skipped" : "")}"
                 : $"Listened to {artist} – {album}: {run.Count} tracks, {plays} counted as plays";
-            lines.Add($"{Time(e.Ts)}–{Time(end)}  {source,-8} {what}");
+            lines.Add($"{Time(e.Ts)}–{Time(end)}  {source,-15} {what}");
             i = j;
         }
         return lines;
     }
 
     private static string? Str(JsonObject? obj, string key) => obj?[key] is JsonValue v ? v.ToString() : null;
-
-    private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
     private static string Bar(long ms, long top) => new('█', (int)Math.Max(1, Math.Round(24.0 * ms / top)));
 

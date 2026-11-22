@@ -29,6 +29,15 @@ public static class EventSources
     public const string Session = "session";
     public const string Agent = "agent";
     public const string Aurora = "aurora";
+    public const string TotalCommander = "totalcmd";
+
+    /// <summary>How each source is named in reports.</summary>
+    public static string DisplayName(string source) => source switch
+    {
+        Aurora => "Aurora",
+        TotalCommander => "Total Commander",
+        _ => source.Length == 0 ? source : char.ToUpperInvariant(source[0]) + source[1..],
+    };
 
     /// <summary>Sources the agent observes itself; everything else is scraped from apps.</summary>
     public static readonly string[] Builtin = [Focus, Idle, Process, Session, Agent];

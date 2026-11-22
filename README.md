@@ -10,7 +10,7 @@ so it can tell you not just *that* you used an app but *what you did* in it.
 This is a layered plan:
 
 1. **Focus, idle, sessions and processes** — works for every app with no per-app code.
-2. **App-native data sources** — Aurora so far; next Total Commander's operation log, git, Claude/T3 sessions.
+2. **App-native data sources** — Aurora and Total Commander so far; next git and Claude/T3 sessions.
 3. A local endpoint your own apps can push events to.
 4. OS-level file attribution (ETW) and UI Automation scraping where nothing else works.
 
@@ -39,7 +39,26 @@ last `scrapeBackfillDays` days.
 | `aurora` | `tag_edit`    | `aurora-state.sqlite3` → `tag_edit_operations`, grouped per album folder | `Changed genre Reggaeton → Reggaetón on Daddy Yankee – King Daddy (11 tracks)` |
 | `aurora` | `album_added` | `aurora-state.sqlite3` → `album_additions` | `Added album Antiloop - LP (1997)` |
 
+| `totalcmd` | `file_op`   | Total Commander's log file (path read from `wincmd.ini`) | `Copied 3 items from c:\photos to d:\backup\photos (created 2 folders)` |
+
 Track and disc numbering changes are kept in `data.changes` but shortened to "numbering" in titles.
+
+### Total Commander setup
+
+Turn on *Configuration → Options → Log file → Create a log file*, with the operations you want
+logged ticked. **Point it outside `%TEMP%`**, for example `%APPDATA%\GHISLER\totalcmd.log`:
+temp folders get cleaned, and a log deleted before Watchme reads it is lost. Daily rotation is
+fine; rotated copies next to the log are read too, so a higher "keep a maximum of" lets Watchme
+catch up after being off for a while.
+
+How log lines become events:
+
+- Lines less than 2 seconds apart that belong together (same operation, or the folder lines
+  around a folder copy or delete) are one event: `Copied 120 items from X to Y (created 12 folders)`.
+- TC logs renames as `Move`; a move within the same folder is reported as `Renamed`.
+- A group is stored once it has been quiet for 10 seconds, so a long copy is not split.
+- Non-`Ok` statuses are called out, e.g. `… — 2 error`.
+- Every line in a group (up to 100) is kept in `data.items`.
 
 ## Install
 
@@ -128,6 +147,8 @@ GROUP BY app ORDER BY minutes DESC;
 | `ignoreProcesses`     | Windows helper processes | Left out of process start/exit events |
 | `auroraEnabled`       | `true`  | Read Aurora's plays, tag edits and album additions |
 | `auroraDataDir`       | `null`  | Aurora's data folder; `null` means `%APPDATA%\com.soundtrackgeek.aurora` |
+| `totalCommanderEnabled` | `true` | Read Total Commander's file operation log |
+| `totalCommanderIni`   | `null`  | Path to `wincmd.ini`; `null` means `%APPDATA%\GHISLER\wincmd.ini` |
 | `scrapeBackfillDays`  | 7       | History imported from apps on first run |
 
 Settings missing from an older `config.json` use their defaults.
