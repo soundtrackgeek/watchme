@@ -79,6 +79,110 @@ internal static partial class Native
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
     private static extern bool Process32NextW(IntPtr snapshot, ref PROCESSENTRY32W entry);
 
+    // ---- Shell: app ids of windows ----
+
+    [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPropertyStore
+    {
+        [PreserveSig] int GetCount(out uint count);
+        [PreserveSig] int GetAt(uint index, out PropertyKey key);
+        [PreserveSig] int GetValue(ref PropertyKey key, out PropVariant value);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct PropertyKey
+    {
+        public Guid FormatId;
+        public uint PropertyId;
+    }
+
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
+    private struct PropVariant
+    {
+        [FieldOffset(0)] public ushort Type;
+        [FieldOffset(8)] public IntPtr Pointer;
+    }
+
+    [ComImport, Guid("43826D1E-E718-42EE-BC55-A1E261C37BFE"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IShellItem
+    {
+        [PreserveSig] int BindToHandler(IntPtr pbc, ref Guid bhid, ref Guid riid, out IntPtr ppv);
+        [PreserveSig] int GetParent(out IShellItem parent);
+        [PreserveSig] int GetDisplayName(uint sigdn, out IntPtr name);
+    }
+
+    [DllImport("shell32.dll")]
+    private static extern int SHGetPropertyStoreForWindow(IntPtr hwnd, ref Guid iid,
+        [MarshalAs(UnmanagedType.Interface)] out IPropertyStore store);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern int SHCreateItemFromParsingName(string path, IntPtr pbc, ref Guid iid,
+        [MarshalAs(UnmanagedType.Interface)] out IShellItem item);
+
+    [DllImport("ole32.dll")]
+    private static extern int PropVariantClear(ref PropVariant value);
+
+    private static readonly Guid PropertyStoreIid = new("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99");
+    private static readonly Guid ShellItemIid = new("43826D1E-E718-42EE-BC55-A1E261C37BFE");
+    private const ushort VT_LPWSTR = 31;
+    private const uint SIGDN_NORMALDISPLAY = 0;
+
+    /// <summary>
+    /// The AppUserModelID Windows groups a window under on the taskbar, e.g. "MSEdge" for an Edge
+    /// window and "chat.google.com-6003259E_fctm2g5w6wnb6!App" for the Google Chat web app.
+    /// Null for windows that set none (most apps: theirs comes from the process).
+    /// </summary>
+    public static string? GetWindowAppId(IntPtr hwnd)
+    {
+        var iid = PropertyStoreIid;
+        if (SHGetPropertyStoreForWindow(hwnd, ref iid, out var store) != 0 || store is null)
+            return null;
+        try
+        {
+            // PKEY_AppUserModel_ID
+            var key = new PropertyKey { FormatId = new Guid("9F4C2855-9F79-4B39-A8D0-E1D42DE1D5F3"), PropertyId = 5 };
+            if (store.GetValue(ref key, out var value) != 0)
+                return null;
+            try
+            {
+                return value.Type == VT_LPWSTR ? Marshal.PtrToStringUni(value.Pointer) : null;
+            }
+            finally
+            {
+                PropVariantClear(ref value);
+            }
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(store);
+        }
+    }
+
+    /// <summary>The name Start shows for an installed app ("Google Chat"), or null.</summary>
+    public static string? GetAppDisplayName(string appId)
+    {
+        var iid = ShellItemIid;
+        if (SHCreateItemFromParsingName(@"shell:AppsFolder\" + appId, IntPtr.Zero, ref iid, out var item) != 0 || item is null)
+            return null;
+        try
+        {
+            if (item.GetDisplayName(SIGDN_NORMALDISPLAY, out var name) != 0)
+                return null;
+            try
+            {
+                return Marshal.PtrToStringUni(name);
+            }
+            finally
+            {
+                Marshal.FreeCoTaskMem(name);
+            }
+        }
+        finally
+        {
+            Marshal.ReleaseComObject(item);
+        }
+    }
+
     // ---- Friendly wrappers ----
 
     public static string GetWindowTitle(IntPtr hwnd)

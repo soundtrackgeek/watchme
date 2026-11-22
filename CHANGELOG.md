@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.13.0] - 2026-11-22
+
+### Added
+
+- Edge web apps: windows of installed web apps (Google Chat, X, Reddit...) are recorded under the
+  app's own name instead of `msedge.exe`, found from the window's app id.
+- Edge history: every Edge profile's `History` is read as `edge/visit` events (title, host,
+  address without query string, search terms), leaving out frames and redirect hops. Hosts in
+  `edgePrivateSites` keep only the host. The report shows one line per browsing sitting with
+  sites by page count and what they were about, and one for the searches.
+
+### Changed
+
+- Edge window titles lose the ` and N more pages - <profile> - Microsoft Edge` tail.
+
 ## [0.12.0] - 2026-11-22
 
 ### Added

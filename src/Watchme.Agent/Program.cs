@@ -92,6 +92,12 @@ namespace Watchme.Agent
             }
             if (config.GitEnabled)
                 scrapers.Add(new GitScraper(() => config.GitRoots, config.ScrapeBackfillDays));
+            if (config.EdgeEnabled)
+            {
+                var userData = config.EdgeUserDataDir ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Microsoft", "Edge", "User Data");
+                scrapers.Add(new EdgeHistoryScraper(userData, () => config.EdgePrivateSites, config.ScrapeBackfillDays));
+            }
             if (config.PowerShellEnabled)
                 scrapers.Add(new PowerShellScraper(Paths.Inbox, config.ScrapeBackfillDays));
             var scraperHost = new ScraperHost(scrapers, Paths.Database, writer.Post);

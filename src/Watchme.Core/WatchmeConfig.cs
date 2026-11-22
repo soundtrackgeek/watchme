@@ -70,6 +70,23 @@ public sealed class WatchmeConfig
     public List<string> GitRoots { get; set; } =
         [@"C:\_code", @"C:\code", @"%USERPROFILE%\source\repos", @"%USERPROFILE%\code"];
 
+    /// <summary>Read the pages you visit and searches you make in Edge from its History database.</summary>
+    public bool EdgeEnabled { get; set; } = true;
+
+    /// <summary>Edge's "User Data" folder (all profiles in it are read); null means %LOCALAPPDATA%\Microsoft\Edge\User Data.</summary>
+    public string? EdgeUserDataDir { get; set; }
+
+    /// <summary>
+    /// Sites recorded without page titles or addresses, only that you were there: a site matches
+    /// when its host contains one of these (case-insensitive). Searches are never kept for them.
+    /// </summary>
+    public List<string> EdgePrivateSites { get; set; } =
+    [
+        "bank", "bankid", "paypal", "vipps", "klarna", "altinn", "skatteetaten", "nav.no", "helsenorge",
+        "login.", "signin.", "auth.", "accounts.", "account.", "accountsettings.", "pay.", "checkout",
+        "secure.", "id.", "sso.",
+    ];
+
     /// <summary>Read the commands you run in PowerShell, logged by the hook from <c>watchme powershell install</c>.</summary>
     public bool PowerShellEnabled { get; set; } = true;
 

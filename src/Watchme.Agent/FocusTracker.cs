@@ -123,12 +123,20 @@ internal sealed class FocusTracker(IDesktopProbe probe, WatchmeConfig config, Ac
         }
     }
 
+    /// <summary>Names Edge shows for its profiles in titles; replaceable for tests.</summary>
+    internal Func<long, IEnumerable<string>> BrowserProfiles { get; init; } = WebApps.EdgeProfileNames;
+
     private WatchEvent FocusEvent(long ts, string kind, WindowInfo w, string title) =>
         new(ts, EventSources.Focus, kind)
         {
             App = w.App,
             Pid = w.Pid,
             Exe = w.Exe,
-            Title = config.ShouldRedactTitle(w.App, title) ? "[redacted]" : title,
+            // Redaction looks at the raw title: "InPrivate" is in the part the tidying removes.
+            Title = config.ShouldRedactTitle(w.App, title) ? "[redacted]"
+                : WebApps.IsBrowser(w.App) ? WebApps.CleanBrowserTitle(title, BrowserProfiles(ts))
+                : title,
+            Data = w.AppId is null ? null
+                : System.Text.Json.JsonSerializer.Serialize(new { app_id = w.AppId, web_app = WebApps.FallbackName(w.AppId) }),
         };
 }

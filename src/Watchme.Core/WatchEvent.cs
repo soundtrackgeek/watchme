@@ -35,11 +35,13 @@ public static class EventSources
     public const string AuroraNg = "aurora_ng";
     public const string MusicLibrary = "musiclibrary";
     public const string PowerShell = "powershell";
+    public const string Edge = "edge";
 
     /// <summary>How each source is named in reports.</summary>
     public static string DisplayName(string source) => source switch
     {
         PowerShell => "PowerShell",
+        Edge => "Edge",
         AuroraNg => "Aurora NG",
         MusicLibrary => "Music Library",
         Git => "Git",

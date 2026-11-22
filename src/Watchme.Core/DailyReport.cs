@@ -243,6 +243,7 @@ public static class DailyReport
         lines.AddRange(AlbumLines(added, "Added"));
         // Aurora logs the albums it imports too, under the same id; Music Library's line says more.
         var addedIds = added.Select(e => Str(e.Data, "album_id")).ToHashSet();
+        lines.AddRange(EdgeLines(events.Where(e => e.Source == EventSources.Edge && e.Kind == "visit").ToList()));
         lines.AddRange(PowerShellLines(events.Where(e => e.Source == EventSources.PowerShell && e.Kind == "command").ToList()));
         lines.AddRange(RatingLines(
             events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "rating").ToList(),
@@ -250,6 +251,7 @@ public static class DailyReport
         events = events
             .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git
                         && !(e.Source == EventSources.PowerShell && e.Kind == "command")
+                        && !(e.Source == EventSources.Edge && e.Kind == "visit")
                         && !(e.Source == EventSources.MusicLibrary && e.Kind is "album_removed" or "album_added" or "tag_change")
                         && !(e.Source == EventSources.Aurora && e.Kind == "album_added" && addedIds.Contains(Str(e.Data, "album_id")))
                         && !(e.Source is EventSources.MusicLibrary or EventSources.AuroraNg && e.Kind == "rating"))
@@ -482,6 +484,142 @@ public static class DailyReport
             var what = $"{verb} {run.Count} albums{(tracks > 0 ? $" ({tracks} tracks)" : "")}{from}: {string.Join("; ", byArtist)}";
             return (first.Ts, $"{When(first.Ts, last.Ts)}{source,-15} {Trim(what, 400)}");
         }
+    }
+
+    /// <summary>Page visits more than this far apart are separate browsing sittings.</summary>
+    public const long BrowsingGapMs = 15 * 60 * 1000;
+
+    /// <summary>
+    /// Edge history, one line per browsing sitting with the sites by number of pages and what the
+    /// busiest ones were about, and one for the searches made in it:
+    /// "62 pages: Rate Your Music 45 (Tiësto Albums, Magik One: First Flight by Tiësto, …), eBay 8, GitHub 5"
+    /// "Searched Google for “Tiësto”; Rate Your Music for “tone norum”".
+    /// </summary>
+    private static IEnumerable<(long Ts, string Line)> EdgeLines(List<ActivityEvent> visits)
+    {
+        var source = EventSources.DisplayName(EventSources.Edge);
+        var siteNames = visits.GroupBy(v => Str(v.Data, "host") ?? "?", StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => SiteName(g.Key, g.Select(v => v.Title)), StringComparer.OrdinalIgnoreCase);
+
+        var sitting = new List<ActivityEvent>();
+        foreach (var v in visits.OrderBy(v => v.Ts))
+        {
+            if (sitting.Count > 0 && v.Ts - sitting[^1].Ts > BrowsingGapMs)
+            {
+                foreach (var line in Lines(sitting))
+                    yield return line;
+                sitting = [];
+            }
+            sitting.Add(v);
+        }
+        if (sitting.Count > 0)
+            foreach (var line in Lines(sitting))
+                yield return line;
+
+        IEnumerable<(long, string)> Lines(List<ActivityEvent> sitting)
+        {
+            var (first, last) = (sitting[0], sitting[^1]);
+            var bySite = sitting.GroupBy(v => siteNames[Str(v.Data, "host") ?? "?"])
+                .OrderByDescending(g => g.Count()).ThenBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            var parts = new List<string>();
+            foreach (var (site, i) in bySite.Select((g, i) => (g, i)).Take(6))
+            {
+                var part = $"{site.Key} {site.Count()}";
+                // The busiest two sites say what the pages were about.
+                if (i < 2 && site.Any(v => Str(v.Data, "private") != "true"))
+                {
+                    var labels = site.Where(v => Str(v.Data, "search") is null)
+                        .Select(v => PageLabel(v.Title, site.Key))
+                        .OfType<string>()
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+                    if (labels.Count > 0)
+                        part += $" ({string.Join(", ", labels.Take(4))}{(labels.Count > 4 ? $", +{labels.Count - 4} more" : "")})";
+                }
+                parts.Add(part);
+            }
+            if (bySite.Count > 6)
+                parts.Add($"+{bySite.Count - 6} more {(bySite.Count == 7 ? "site" : "sites")}");
+            var pages = sitting.Count == 1 ? "1 page" : $"{sitting.Count} pages";
+            yield return (first.Ts, $"{When(first.Ts, last.Ts)}{source,-15} {Trim($"{pages}: {string.Join(", ", parts)}", 400)}");
+
+            var searches = sitting.Where(v => Str(v.Data, "search") is not null)
+                .GroupBy(v => siteNames[Str(v.Data, "host") ?? "?"] is var n && n.EndsWith(" Search", StringComparison.Ordinal) ? n[..^7] : n)
+                .Select(g => $"{g.Key} for {string.Join(", ", g.Select(v => $"“{Str(v.Data, "search")}”").Distinct(StringComparer.OrdinalIgnoreCase))}")
+                .ToList();
+            if (searches.Count > 0)
+            {
+                var firstSearch = sitting.First(v => Str(v.Data, "search") is not null);
+                yield return (firstSearch.Ts, $"{Time(firstSearch.Ts)}        {source,-15} {Trim("Searched " + string.Join("; ", searches), 300)}");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A site's name from its page titles ("… - Rate Your Music", "… | eBay"): the last part most of
+    /// them share, else the host without "www.".
+    /// </summary>
+    internal static string SiteName(string host, IEnumerable<string?> titles)
+    {
+        var bare = host.StartsWith("www.", StringComparison.OrdinalIgnoreCase) ? host[4..] : host;
+        var label = bare.Split('.') is { Length: >= 2 } labels ? labels[^2] : bare;
+        var list = titles.OfType<string>().Where(t => t.Length > 0 && t != host).ToList();
+        // "… - Rate Your Music" puts the name last, "GitHub - …" first.
+        var names = list.SelectMany(t => new[] { TitleSuffix(t), TitlePrefix(t) }).OfType<string>()
+            .GroupBy(s => s).OrderByDescending(g => g.Count());
+        foreach (var name in names)
+        {
+            // A name that spells the host ("Rate Your Music" for rateyourmusic.com) needs one page;
+            // others must be on most of them.
+            var letters = new string(name.Key.Where(char.IsLetterOrDigit).ToArray());
+            if (letters.StartsWith(label, StringComparison.OrdinalIgnoreCase)
+                || (list.Count >= 2 && name.Count() * 2 >= list.Count))
+                return name.Key;
+        }
+        // A page titled just "GitHub".
+        if (list.FirstOrDefault(t => new string(t.Where(char.IsLetterOrDigit).ToArray()).Equals(label, StringComparison.OrdinalIgnoreCase)) is { } plain)
+            return plain;
+        return bare;
+    }
+
+    private static readonly string[] TitleSeparators = [" - ", " | ", " – ", " — ", " · "];
+
+    private static string? TitleSuffix(string title)
+    {
+        var at = TitleSeparators.Select(s => (Sep: s, At: title.LastIndexOf(s, StringComparison.Ordinal)))
+            .MaxBy(x => x.At);
+        return at.At > 0 ? title[(at.At + at.Sep.Length)..].Trim() : null;
+    }
+
+    private static string? TitlePrefix(string title)
+    {
+        var at = TitleSeparators.Select(s => title.IndexOf(s, StringComparison.Ordinal)).Where(i => i > 0).DefaultIfEmpty(-1).Min();
+        return at > 0 ? title[..at].Trim() : null;
+    }
+
+    /// <summary>
+    /// What a page was about, short: "Magik One: First Flight by Tiësto (DJ Mix, Trance): Reviews… - Rate Your Music"
+    /// → "Magik One: First Flight by Tiësto". Null for pages that say nothing (the site's own name, "Search").
+    /// </summary>
+    internal static string? PageLabel(string? title, string site)
+    {
+        if (string.IsNullOrWhiteSpace(title))
+            return null;
+        var label = title;
+        if (TitleSuffix(label) == site)
+            label = label[..label.LastIndexOf(site, StringComparison.Ordinal)].TrimEnd(' ', '-', '|', '–', '—', '·');
+        else if (TitlePrefix(label) == site)
+            label = label[site.Length..].TrimStart(' ', '-', '|', '–', '—', '·');
+        var cut = new[] { " (", " | ", " – ", ": songs", ": Reviews" }
+            .Select(s => label.IndexOf(s, StringComparison.Ordinal)).Where(i => i > 0).DefaultIfEmpty(-1).Min();
+        if (cut > 0)
+            label = label[..cut];
+        label = label.Trim();
+        if (label.Length == 0 || label.Equals(site, StringComparison.OrdinalIgnoreCase)
+            || label is "Search" or "Home" or "Sign in" or "Log in")
+            return null;
+        return Trim(label, 50);
     }
 
     /// <summary>Commands in one PowerShell tab more than this far apart are separate sessions.</summary>

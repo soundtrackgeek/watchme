@@ -20,6 +20,11 @@ This is a layered plan:
 |-----------|--------------------------------------------|---------|
 | `focus`   | `foreground`                               | A different window came to the front (app, exe, pid, title) |
 | `focus`   | `title`                                    | The focused window changed title and kept it for 2 s (new file, tab, track...) |
+
+Edge web apps (installed sites such as Google Chat, X or Reddit) run inside Edge's own process, so
+Watchme tells them apart by their window's app id and records them under their own name (`Google
+Chat`, with `data.app_id`) instead of `msedge.exe`. Edge window titles lose their
+` and 10 more pages - Personal - Microsoft Edge` tail.
 | `idle`    | `idle_start` / `idle_end`                  | No input for 5 minutes, backdated to your last input / you are back |
 | `session` | `lock` / `unlock` / `suspend` / `resume` / `logoff` / `shutdown` | Session and power state |
 | `process` | `start` / `exit`                           | Processes in your session (start time is exact, exit within 5 s) |
@@ -45,6 +50,7 @@ last `scrapeBackfillDays` days.
 | `t3`     | `run`         | T3 Code's `~\.t3\userdata\statev2.sqlite` → runs, threads, projects, messages | `Claude Code Opus 5.5 (medium) · watchme / Activity monitor · 4m 12s` |
 | `git`    | `commit` / `push` / `pull` / `merge` / `checkout` / `reset` / `rebase` / `clone` | Reflogs (`.git/logs/HEAD`, worktrees, `logs/refs/remotes`) of repos under `gitRoots` | `Committed to watchme (master): Add T3 Code scraper` |
 | `git`    | `repo_init` / `folder_created` | Creation time of `.git` / of folders directly inside `gitRoots` | `Created folder watchme in C:\_code` |
+| `edge`   | `visit`       | Each Edge profile's `History` database (a copy, read when it changed) | `Magik One: First Flight by Tiësto - Rate Your Music` (data: host, url, search) |
 
 Track and disc numbering changes are kept in `data.changes` but shortened to "numbering" in titles.
 
@@ -163,6 +169,23 @@ one), with the folder, how many failed and the programs used most:
 15:10        PowerShell      C:\_code\site> npm run build (failed, exit 2)
 ```
 
+### Edge browsing
+
+Every page you open in Edge (web apps included) is read from Edge's history, leaving out frames
+and redirect hops. Addresses are stored **without query string or fragment**, since that is where
+session ids and tokens live; the search terms of search pages (Google, Bing, and sites' own search
+boxes such as Rate Your Music's or eBay's) are kept as `data.search`. Hosts matching
+`edgePrivateSites` (banks, payment, sign-in and account pages by default) keep only the host: no
+title, address or search. InPrivate windows are not in Edge's history at all.
+
+The report shows one line per browsing sitting (pages less than 15 minutes apart), sites by number
+of pages, and what the busiest two were about, plus the searches made:
+
+```
+07:54–11:07  Edge            195 pages: Rate Your Music 63 (Coolio Albums, My Soul by Coolio, …), Reddit 57 (…), GitHub 19, YouTube 13
+07:54        Edge            Searched Google for “t3 code”; Rate Your Music for “coolio”, “gigi d'agostino”
+```
+
 ### Total Commander setup
 
 Turn on *Configuration → Options → Log file → Create a log file*, with the operations you want
@@ -279,6 +302,9 @@ GROUP BY app ORDER BY minutes DESC;
 | `gitEnabled`          | `true`  | Read git reflogs and new folders |
 | `gitRoots`            | `C:\_code`, `C:\code`, `%USERPROFILE%\source\repos`, `%USERPROFILE%\code` | Folders holding your repos; missing ones are skipped |
 | `powerShellEnabled`   | `true`  | Read the commands logged by `watchme powershell install` |
+| `edgeEnabled`         | `true`  | Read Edge's browsing history |
+| `edgeUserDataDir`     | `null`  | `null` means `%LOCALAPPDATA%\Microsoft\Edge\User Data` (every profile in it is read) |
+| `edgePrivateSites`    | banks, payment and sign-in hosts | Hosts containing an entry keep only the host; entries ending in `.` (`login.`) must start the host |
 | `scrapeBackfillDays`  | 7       | History imported from apps on first run |
 
 Settings missing from an older `config.json` use their defaults.
