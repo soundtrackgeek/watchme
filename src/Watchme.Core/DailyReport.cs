@@ -1,3 +1,5 @@
+using System.Text.Json.Nodes;
+
 namespace Watchme.Core;
 
 /// <summary>A focus span clipped to the day being reported.</summary>
@@ -141,18 +143,36 @@ public static class DailyReport
             .OrderByDescending(a => a.Ms)
             .ToList();
         var top = byApp[0].Ms;
-        foreach (var (app, ms) in byApp.Where(a => a.Ms >= 30_000).Take(20))
+        var shown = byApp.Where(a => a.Ms >= 30_000).Take(20).ToList();
+        foreach (var (app, ms) in shown)
+            output.WriteLine($"  {Trim(app, 28),-28} {Duration(ms),8}  {Bar(ms, top)}");
+        var rest = byApp.Skip(shown.Count).ToList();
+        if (rest.Count > 0)
         {
-            var bar = new string('█', (int)Math.Max(1, Math.Round(24.0 * ms / top)));
-            output.WriteLine($"  {Trim(app, 28),-28} {Duration(ms),8}  {bar}");
+            var restMs = rest.Sum(a => a.Ms);
+            var names = Trim(string.Join(", ", rest.Select(a => a.App)), 60);
+            output.WriteLine($"  {$"other ({rest.Count})",-28} {Duration(restMs),8}  {Bar(restMs, top)}  {names}");
         }
         output.WriteLine();
 
         output.WriteLine("Timeline (blocks of 1 minute or more)");
-        foreach (var b in BuildBlocks(spans, MergeGapMs).Where(b => b.ActiveMs >= 60_000))
+        var blocks = BuildBlocks(spans, MergeGapMs);
+        foreach (var b in blocks.Where(b => b.ActiveMs >= 60_000))
         {
             var title = b.MainTitle is null ? "" : $"  {Trim(b.MainTitle, 70)}";
             output.WriteLine($"  {Time(b.Start)}–{Time(b.End)} {Duration(b.ActiveMs),8}  {Trim(b.App, 24),-24}{title}");
+        }
+        var shortBlocks = blocks.Where(b => b.ActiveMs < 60_000).ToList();
+        if (shortBlocks.Count > 0)
+            output.WriteLine($"  + {shortBlocks.Count} shorter visits, {Duration(shortBlocks.Sum(b => b.ActiveMs))} in total");
+
+        var activity = LoadActivity(db, from, to);
+        if (activity.Count > 0)
+        {
+            output.WriteLine();
+            output.WriteLine("Activity in apps");
+            foreach (var line in activity)
+                output.WriteLine($"  {line}");
         }
 
         var launched = LoadLaunches(db, from, to, byApp.Select(a => a.App).ToHashSet(StringComparer.OrdinalIgnoreCase));
@@ -164,6 +184,77 @@ public static class DailyReport
                 output.WriteLine($"  {Time(ts)}  {app}");
         }
     }
+
+    private sealed record ActivityEvent(long Ts, string Source, string Kind, string? Title, JsonObject? Data);
+
+    /// <summary>
+    /// Events scraped from apps, as report lines. Consecutive listens to the same album become one
+    /// line ("Listened to X – Y: 9 tracks"); everything else is printed with its own title.
+    /// </summary>
+    public static List<string> LoadActivity(Database db, long fromMs, long toMs)
+    {
+        using var cmd = db.Connection.CreateCommand();
+        var builtin = string.Join(", ", EventSources.Builtin.Select(s => $"'{s}'"));
+        cmd.CommandText = $"""
+            SELECT ts, source, kind, title, data FROM events
+            WHERE source NOT IN ({builtin}) AND ts >= $from AND ts < $to
+            ORDER BY ts, id;
+            """;
+        cmd.Parameters.AddWithValue("$from", fromMs);
+        cmd.Parameters.AddWithValue("$to", toMs);
+
+        var events = new List<ActivityEvent>();
+        using (var r = cmd.ExecuteReader())
+        {
+            while (r.Read())
+            {
+                JsonObject? data = null;
+                if (!r.IsDBNull(4))
+                {
+                    try { data = JsonNode.Parse(r.GetString(4)) as JsonObject; }
+                    catch (System.Text.Json.JsonException) { }
+                }
+                events.Add(new ActivityEvent(r.GetInt64(0), r.GetString(1), r.GetString(2),
+                    r.IsDBNull(3) ? null : r.GetString(3), data));
+            }
+        }
+
+        var lines = new List<string>();
+        for (var i = 0; i < events.Count; i++)
+        {
+            var e = events[i];
+            var source = Capitalize(e.Source);
+            if (e.Kind != "listen")
+            {
+                lines.Add($"{Time(e.Ts)}        {source,-8} {e.Title}");
+                continue;
+            }
+
+            // Collapse a run of listens from the same album.
+            var album = Str(e.Data, "album");
+            var artist = Str(e.Data, "artist");
+            var j = i;
+            while (j + 1 < events.Count && events[j + 1].Kind == "listen" && events[j + 1].Source == e.Source
+                   && Str(events[j + 1].Data, "album") == album && Str(events[j + 1].Data, "artist") == artist)
+                j++;
+
+            var run = events.GetRange(i, j - i + 1);
+            var end = run.Max(x => x.Data?["ended_ts"]?.GetValue<long>() ?? x.Ts);
+            var plays = run.Count(x => x.Data?["play"]?.GetValue<bool>() == true);
+            var what = run.Count == 1
+                ? $"Listened to {e.Title}{(album is null ? "" : $" ({album})")}{(plays == 0 ? ", skipped" : "")}"
+                : $"Listened to {artist} – {album}: {run.Count} tracks, {plays} counted as plays";
+            lines.Add($"{Time(e.Ts)}–{Time(end)}  {source,-8} {what}");
+            i = j;
+        }
+        return lines;
+    }
+
+    private static string? Str(JsonObject? obj, string key) => obj?[key] is JsonValue v ? v.ToString() : null;
+
+    private static string Capitalize(string s) => s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..];
+
+    private static string Bar(long ms, long top) => new('█', (int)Math.Max(1, Math.Round(24.0 * ms / top)));
 
     private static List<(long Ts, string App)> LoadLaunches(Database db, long fromMs, long toMs, HashSet<string> usedApps)
     {

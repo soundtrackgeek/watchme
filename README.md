@@ -4,10 +4,13 @@ A small Windows agent that starts at logon and records what you do on the comput
 app is in front, what its window says, when you go idle, which programs you open — into a
 local SQLite database. No screenshots, no keystrokes.
 
-This is step 1 of a layered plan:
+It also reads what some apps already record about themselves (see [App scrapers](#app-scrapers)),
+so it can tell you not just *that* you used an app but *what you did* in it.
 
-1. **Focus, idle, sessions and processes** (this release) — works for every app with no per-app code.
-2. App-native data sources (Total Commander's operation log, git, Claude/T3 sessions, browser history).
+This is a layered plan:
+
+1. **Focus, idle, sessions and processes** — works for every app with no per-app code.
+2. **App-native data sources** — Aurora so far; next Total Commander's operation log, git, Claude/T3 sessions.
 3. A local endpoint your own apps can push events to.
 4. OS-level file attribution (ETW) and UI Automation scraping where nothing else works.
 
@@ -23,6 +26,20 @@ This is step 1 of a layered plan:
 | `agent`   | `start` / `stop`                           | The agent itself; an unclean stop is closed at its last heartbeat |
 
 Durations are never stored; they are derived by the `focus_spans` view.
+
+## App scrapers
+
+Scrapers read an app's own data every 30 seconds, read-only, and store new entries as events with
+an `ext_id`, so re-reading the same rows never creates duplicates. On first run they import the
+last `scrapeBackfillDays` days.
+
+| source   | kind          | from | example title |
+|----------|---------------|------|---------------|
+| `aurora` | `listen`      | `aurora-history.sqlite3` → `listening_sessions` | `Bad Manners – Lorraine` (data: album, genre, listened seconds, play/skip) |
+| `aurora` | `tag_edit`    | `aurora-state.sqlite3` → `tag_edit_operations`, grouped per album folder | `Changed genre Reggaeton → Reggaetón on Daddy Yankee – King Daddy (11 tracks)` |
+| `aurora` | `album_added` | `aurora-state.sqlite3` → `album_additions` | `Added album Antiloop - LP (1997)` |
+
+Track and disc numbering changes are kept in `data.changes` but shortened to "numbering" in titles.
 
 ## Install
 
@@ -67,10 +84,20 @@ Apps
   TOTALCMD64.EXE                  48m 10s  ██████████
   ...
 
+  other (3)                      0m 10s  █  SnippingTool.exe, TOTALCMD64.EXE, explorer.exe
+
 Timeline (blocks of 1 minute or more)
-  14:04–14:49      45m 02s  T3 Code (Beta).exe        Watchme / Activity monitor
-  ...
+  14:04–14:49  45m 02s  T3 Code (Beta).exe        Watchme / Activity monitor
+  + 28 shorter visits, 5m 32s in total
+
+Activity in apps
+  12:08        Aurora   Changed genre Reggae → Pop Reggae on Inner Circle – Bad To The Bone (18 tracks)
+  12:11        Aurora   Changed genre Pop → Boy Band; numbering on A1 – Make It Good (14 tracks)
+  15:02–15:41  Aurora   Listened to Bad Manners – Loonee Tunes!: 12 tracks, 9 counted as plays
 ```
+
+Apps under 30 seconds are summed into an `other` line, and timeline blocks under a minute into a
+`shorter visits` line, so short use is still counted.
 
 ## Querying the data yourself
 
@@ -99,6 +126,11 @@ GROUP BY app ORDER BY minutes DESC;
 | `redactTitleApps`     | password managers | Apps whose titles are stored as `[redacted]` |
 | `redactTitlePatterns` | `InPrivate`, `Incognito`, `Private Browsing` | Titles containing these are redacted |
 | `ignoreProcesses`     | Windows helper processes | Left out of process start/exit events |
+| `auroraEnabled`       | `true`  | Read Aurora's plays, tag edits and album additions |
+| `auroraDataDir`       | `null`  | Aurora's data folder; `null` means `%APPDATA%\com.soundtrackgeek.aurora` |
+| `scrapeBackfillDays`  | 7       | History imported from apps on first run |
+
+Settings missing from an older `config.json` use their defaults.
 
 Set `WATCHME_HOME` to use a different data folder (handy for testing).
 

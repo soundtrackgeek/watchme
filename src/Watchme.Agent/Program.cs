@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Watchme.Agent;
+using Watchme.Agent.Scrapers;
 using Watchme.Core;
 
 Paths.EnsureDataDir();
@@ -57,10 +58,20 @@ namespace Watchme.Agent
             var processes = new ProcessTracker(config, writer.Post);
             using var session = new SessionTracker(focus, writer.Post, RequestStopAndWait);
 
+            var scrapers = new List<IScraper>();
+            if (config.AuroraEnabled)
+            {
+                var auroraDir = config.AuroraDataDir ?? Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "com.soundtrackgeek.aurora");
+                scrapers.Add(new AuroraScraper(auroraDir, config.ScrapeBackfillDays));
+            }
+            var scraperHost = new ScraperHost(scrapers, Paths.Database, writer.Post);
+
             var collectors = new[]
             {
                 Task.Run(() => focus.RunAsync(_cts.Token)),
                 Task.Run(() => processes.RunAsync(_cts.Token)),
+                scraperHost.RunAsync(_cts.Token),
             };
 
             // Block until `watchme stop` signals us, or logoff/shutdown calls RequestStop.

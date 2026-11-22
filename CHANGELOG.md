@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-11-22
+
+### Added
+
+- App scrapers: a framework that reads apps' own data on an interval, with duplicate-safe
+  re-reads through a new `ext_id` column (schema v2, migrated automatically).
+- Aurora scraper: listens (with play/skip outcome), tag edits grouped per album with
+  before → after values, and album additions. Imports the last 7 days on first run.
+- Report section "Activity in apps"; consecutive listens to one album collapse into one line.
+- Config: `auroraEnabled`, `auroraDataDir`, `scrapeBackfillDays`.
+
+### Changed
+
+- The report no longer hides short use: apps under 30 seconds are summed into an `other`
+  line, and timeline blocks under a minute into a `shorter visits` line.
+
 ## [0.2.0] - 2026-11-22
 
 ### Added

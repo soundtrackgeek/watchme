@@ -5,7 +5,14 @@ namespace Watchme.Core;
 /// <summary>The SQLite event store. Not thread-safe: the agent uses it from its single writer loop.</summary>
 public sealed class Database : IDisposable
 {
-    public const int SchemaVersion = 1;
+    public const int SchemaVersion = 2;
+
+    // v2: scraped events carry an external id, so re-reading an overlapping window of an
+    // app's own data never creates duplicates.
+    private const string SchemaV2 = """
+        ALTER TABLE events ADD COLUMN ext_id TEXT;
+        CREATE UNIQUE INDEX ux_events_source_ext_id ON events (source, ext_id) WHERE ext_id IS NOT NULL;
+        """;
 
     // The schema keeps only raw facts. `focus_spans` turns them into intervals:
     // every focus event lasts until the next "state" event (another focus change,
@@ -90,6 +97,8 @@ public sealed class Database : IDisposable
         using var tx = _connection.BeginTransaction();
         if (version < 1)
             Execute(SchemaV1, tx);
+        if (version < 2)
+            Execute(SchemaV2, tx);
         Execute($"PRAGMA user_version = {SchemaVersion};", tx);
         tx.Commit();
     }
@@ -103,8 +112,9 @@ public sealed class Database : IDisposable
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
         cmd.CommandText = """
-            INSERT INTO events (ts, source, kind, app, pid, exe, title, data)
-            VALUES ($ts, $source, $kind, $app, $pid, $exe, $title, $data);
+            INSERT INTO events (ts, source, kind, app, pid, exe, title, data, ext_id)
+            VALUES ($ts, $source, $kind, $app, $pid, $exe, $title, $data, $ext)
+            ON CONFLICT DO NOTHING;
             """;
         var pTs = cmd.Parameters.Add("$ts", SqliteType.Integer);
         var pSource = cmd.Parameters.Add("$source", SqliteType.Text);
@@ -114,6 +124,7 @@ public sealed class Database : IDisposable
         var pExe = cmd.Parameters.Add("$exe", SqliteType.Text);
         var pTitle = cmd.Parameters.Add("$title", SqliteType.Text);
         var pData = cmd.Parameters.Add("$data", SqliteType.Text);
+        var pExt = cmd.Parameters.Add("$ext", SqliteType.Text);
         cmd.Prepare();
 
         foreach (var e in events)
@@ -126,6 +137,7 @@ public sealed class Database : IDisposable
             pExe.Value = (object?)e.Exe ?? DBNull.Value;
             pTitle.Value = (object?)e.Title ?? DBNull.Value;
             pData.Value = (object?)e.Data ?? DBNull.Value;
+            pExt.Value = (object?)e.ExtId ?? DBNull.Value;
             cmd.ExecuteNonQuery();
         }
         tx.Commit();
@@ -167,6 +179,23 @@ public sealed class Database : IDisposable
 
         Insert([new WatchEvent(lastAlive, EventSources.Agent, "stop") { Data = """{"reason":"unclean"}""" }]);
         return true;
+    }
+
+    /// <summary>
+    /// Where a scraper left off: the largest <c>ts</c> (or, with <paramref name="dataField"/>,
+    /// the largest numeric field in <c>data</c>) among this source's events of this kind.
+    /// </summary>
+    public long? Cursor(string source, string kind, string? dataField = null)
+    {
+        using var cmd = _connection.CreateCommand();
+        cmd.CommandText = dataField is null
+            ? "SELECT MAX(ts) FROM events WHERE source = $s AND kind = $k;"
+            : "SELECT MAX(CAST(json_extract(data, $path) AS INTEGER)) FROM events WHERE source = $s AND kind = $k;";
+        cmd.Parameters.AddWithValue("$s", source);
+        cmd.Parameters.AddWithValue("$k", kind);
+        if (dataField is not null)
+            cmd.Parameters.AddWithValue("$path", "$." + dataField);
+        return cmd.ExecuteScalar() is long value ? value : null;
     }
 
     public void Execute(string sql, SqliteTransaction? tx = null)

@@ -30,6 +30,15 @@ public sealed class WatchmeConfig
         "taskhostw.exe", "WmiPrvSE.exe", "audiodg.exe", "consent.exe",
     ];
 
+    /// <summary>Read plays, tag edits and album additions from Aurora's own databases.</summary>
+    public bool AuroraEnabled { get; set; } = true;
+
+    /// <summary>Aurora's data folder; null means %APPDATA%\com.soundtrackgeek.aurora.</summary>
+    public string? AuroraDataDir { get; set; }
+
+    /// <summary>On first run, scrapers import this many days of history from apps.</summary>
+    public int ScrapeBackfillDays { get; set; } = 7;
+
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         WriteIndented = true,

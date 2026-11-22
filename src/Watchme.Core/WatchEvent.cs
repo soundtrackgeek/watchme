@@ -17,6 +17,8 @@ public sealed record WatchEvent(long Ts, string Source, string Kind)
     public string? Title { get; init; }
     /// <summary>Extra details as a JSON object.</summary>
     public string? Data { get; init; }
+    /// <summary>Stable id from the source app (scraped events). A second insert with the same id is ignored.</summary>
+    public string? ExtId { get; init; }
 }
 
 public static class EventSources
@@ -26,6 +28,10 @@ public static class EventSources
     public const string Process = "process";
     public const string Session = "session";
     public const string Agent = "agent";
+    public const string Aurora = "aurora";
+
+    /// <summary>Sources the agent observes itself; everything else is scraped from apps.</summary>
+    public static readonly string[] Builtin = [Focus, Idle, Process, Session, Agent];
 }
 
 public static class Clock
