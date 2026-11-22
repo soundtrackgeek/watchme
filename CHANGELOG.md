@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.10.0] - 2026-11-22
+
+### Added
+
+- Removed albums: reads albums removed from Music Library (its `library_updates` log) as
+  `musiclibrary/album_removed` events, so albums deleted in Aurora show up in the report, one
+  line per clean-up with the albums listed per artist.
+
 ## [0.9.0] - 2026-11-22
 
 ### Added

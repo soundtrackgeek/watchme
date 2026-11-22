@@ -224,6 +224,7 @@ public static class DailyReport
         var lines = AgentSessions(events.Where(e => e.Source == EventSources.T3 && e.Kind == "run").ToList(), spans)
             .ToList();
         lines.AddRange(GitLines(events.Where(e => e.Source == EventSources.Git).ToList()));
+        lines.AddRange(RemovalLines(events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "album_removed").ToList()));
         lines.AddRange(PowerShellLines(events.Where(e => e.Source == EventSources.PowerShell && e.Kind == "command").ToList()));
         lines.AddRange(RatingLines(
             events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "rating").ToList(),
@@ -231,6 +232,7 @@ public static class DailyReport
         events = events
             .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git
                         && !(e.Source == EventSources.PowerShell && e.Kind == "command")
+                        && !(e.Source == EventSources.MusicLibrary && e.Kind == "album_removed")
                         && !(e.Source is EventSources.MusicLibrary or EventSources.AuroraNg && e.Kind == "rating"))
             .ToList();
 
@@ -393,6 +395,43 @@ public static class DailyReport
             ? $"Rated {withStars} {(withStars == 1 ? "track" : "tracks")} on {artist} – {album}: {string.Join("; ", parts)}"
             : $"Changed ratings on {artist} – {album}: {string.Join("; ", parts)}";
         return $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} {what}";
+    }
+
+    /// <summary>Albums removed less than this far apart are one clean-up.</summary>
+    public const long RemovalGapMs = 30 * 60 * 1000;
+
+    /// <summary>
+    /// Albums removed from Music Library, one line per clean-up, albums listed per artist:
+    /// "Removed 9 albums (140 tracks): DJ Tiësto: Space Age 1.0 (1998), Magik Four (1999); Tiësto: ...".
+    /// </summary>
+    private static IEnumerable<(long Ts, string Line)> RemovalLines(List<ActivityEvent> removals)
+    {
+        var source = EventSources.DisplayName(EventSources.MusicLibrary);
+        var run = new List<ActivityEvent>();
+        foreach (var e in removals.OrderBy(e => e.Ts))
+        {
+            if (run.Count > 0 && e.Ts - run[^1].Ts > RemovalGapMs)
+            {
+                yield return Line(run);
+                run = [];
+            }
+            run.Add(e);
+        }
+        if (run.Count > 0)
+            yield return Line(run);
+
+        (long, string) Line(List<ActivityEvent> run)
+        {
+            var (first, last) = (run[0], run[^1]);
+            if (run.Count == 1)
+                return (first.Ts, $"{Time(first.Ts)}        {source,-15} {first.Title}");
+            var tracks = run.Sum(e => Int(e, "tracks") ?? 0);
+            var byArtist = run.GroupBy(e => Str(e.Data, "artist") ?? "?")
+                .Select(g => $"{g.Key}: " + string.Join(", ", g.Select(e =>
+                    Str(e.Data, "album") + (Int(e, "year") is { } y ? $" ({y})" : ""))));
+            var what = $"Removed {run.Count} albums{(tracks > 0 ? $" ({tracks} tracks)" : "")}: {string.Join("; ", byArtist)}";
+            return (first.Ts, $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} {Trim(what, 400)}");
+        }
     }
 
     /// <summary>Commands in one PowerShell tab more than this far apart are separate sessions.</summary>

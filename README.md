@@ -105,6 +105,16 @@ that followed. A new folder that became a repo within 10 minutes is shown as one
 13:21–14:17  Git             Committed 6 times to watchme (master), pushed to origin: Initial commit; ...
 ```
 
+### Removed albums
+
+Music Library logs every change to the library in its `library_updates` table. Watchme reads
+the albums removed from it (deleted in Aurora, or gone from disk) as `musiclibrary/album_removed`
+events. Removals less than 30 minutes apart become one line, with the albums listed per artist:
+
+```
+14:44–15:02  Music Library   Removed 9 albums (137 tracks): DJ Tiësto: Space Age 1.0 (1998), Magik Four: A New Adventure (1999), ...
+```
+
 ### PowerShell commands
 
 PowerShell keeps no timestamped log of what you run, so Watchme adds one. Run once:
@@ -246,7 +256,7 @@ GROUP BY app ORDER BY minutes DESC;
 | `auroraDataDir`       | `null`  | Aurora's data folder; `null` means `%APPDATA%\com.soundtrackgeek.aurora` |
 | `auroraNgEnabled`     | `true`  | Read Aurora NG's listening history and rating log |
 | `auroraNgDataDir`     | `null`  | Aurora NG's data folder; `null` means `%LOCALAPPDATA%\aurora_ng` |
-| `musicLibraryEnabled` | `true`  | Read rating changes from Music Library |
+| `musicLibraryEnabled` | `true`  | Read rating changes and removed albums from Music Library |
 | `musicLibraryDb`      | `null`  | `null` means `%APPDATA%\com.local.musiclibrary\music-library.sqlite3` |
 | `totalCommanderEnabled` | `true` | Read Total Commander's file operation log |
 | `totalCommanderIni`   | `null`  | Path to `wincmd.ini`; `null` means `%APPDATA%\GHISLER\wincmd.ini` |

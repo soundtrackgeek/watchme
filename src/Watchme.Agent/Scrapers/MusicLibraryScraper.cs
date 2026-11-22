@@ -10,6 +10,8 @@ namespace Watchme.Agent.Scrapers;
 /// change, whichever app the rating came from (Aurora NG, Aurora, MusicBee...). Rows are per album,
 /// with rated tracks, completeness and the album rating before and after; which track got how many
 /// stars is not logged there. Emits musiclibrary/rating events.
+/// Also reads <c>library_updates</c>, Music Library's change log, for albums removed from the
+/// library (deleted in Aurora or elsewhere): one musiclibrary/album_removed event each.
 /// </summary>
 internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : IScraper
 {
@@ -34,9 +36,72 @@ internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : 
     {
         if (!File.Exists(libraryDb))
             return [];
-
-        var cursor = context.Cursor(Source, Kind, "event_id");
         using var db = AuroraScraper.OpenReadOnly(libraryDb);
+        return [.. Ratings(db, context), .. Removals(db, context)];
+    }
+
+    private string Since(ScrapeContext context) =>
+        DateTimeOffset.FromUnixTimeMilliseconds(context.Now - backfillDays * 24L * 60 * 60 * 1000)
+            .UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
+
+    /// <summary>Albums removed from the library: "Removed DJ Tiësto – Space Age 1.0 (1998), 16 tracks".</summary>
+    private List<WatchEvent> Removals(Microsoft.Data.Sqlite.SqliteConnection db, ScrapeContext context)
+    {
+        using (var check = db.CreateCommand())
+        {
+            check.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_updates';";
+            if (check.ExecuteScalar() is null)
+                return [];
+        }
+        var cursor = context.Cursor(Source, "album_removed", "update_id");
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = $"""
+            SELECT id, created_at, album_id, album_artist_display, album, year, change_count, source_path
+            FROM library_updates
+            WHERE {(cursor is null ? "created_at >= $since" : "id > $cursor")}
+              AND change_kind = 'removed' AND category = 'album'
+            ORDER BY id;
+            """;
+        if (cursor is { } c)
+            cmd.Parameters.AddWithValue("$cursor", c);
+        else
+            cmd.Parameters.AddWithValue("$since", Since(context));
+
+        var events = new List<WatchEvent>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            if (!DateTimeOffset.TryParse(r.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at))
+                continue;
+            var artist = r.IsDBNull(3) ? null : r.GetString(3);
+            var albumTitle = r.IsDBNull(4) ? "?" : r.GetString(4);
+            int? year = r.IsDBNull(5) ? null : r.GetInt32(5);
+            int? tracks = r.IsDBNull(6) ? null : r.GetInt32(6);
+            var album = (artist is null ? albumTitle : $"{artist} – {albumTitle}") + (year is null ? "" : $" ({year})");
+            var data = new JsonObject
+            {
+                ["update_id"] = r.GetInt64(0),
+                ["album_id"] = r.GetString(2),
+                ["album"] = albumTitle,
+                ["artist"] = artist,
+                ["year"] = year,
+                ["tracks"] = tracks,
+                ["path"] = r.IsDBNull(7) ? null : r.GetString(7),
+            };
+            events.Add(new WatchEvent(at.ToUnixTimeMilliseconds(), Source, "album_removed")
+            {
+                App = "music-library.exe",
+                Title = $"Removed {album}" + (tracks is null ? "" : $", {tracks} {(tracks == 1 ? "track" : "tracks")}"),
+                Data = data.ToJsonString(Json),
+                ExtId = $"update:{r.GetInt64(0)}",
+            });
+        }
+        return events;
+    }
+
+    private List<WatchEvent> Ratings(Microsoft.Data.Sqlite.SqliteConnection db, ScrapeContext context)
+    {
+        var cursor = context.Cursor(Source, Kind, "event_id");
         using var cmd = db.CreateCommand();
         var types = string.Join(", ", RatingTypes.Select(t => $"'{t}'"));
         // Both filters use an index (the primary key, idx_rating_events_created_at).
@@ -51,8 +116,7 @@ internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : 
         if (cursor is { } c)
             cmd.Parameters.AddWithValue("$cursor", c);
         else
-            cmd.Parameters.AddWithValue("$since", DateTimeOffset.FromUnixTimeMilliseconds(
-                context.Now - backfillDays * 24L * 60 * 60 * 1000).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture));
+            cmd.Parameters.AddWithValue("$since", Since(context));
 
         var events = new List<WatchEvent>();
         using var r = cmd.ExecuteReader();

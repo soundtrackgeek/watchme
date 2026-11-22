@@ -94,6 +94,45 @@ public sealed class MusicScrapersTests : IDisposable
     }
 
     [Fact]
+    public void Removed_albums_become_one_line_per_clean_up()
+    {
+        Exec(Library, """
+            CREATE TABLE library_updates (id INTEGER PRIMARY KEY AUTOINCREMENT, import_run_id INTEGER,
+              created_at TEXT NOT NULL, change_kind TEXT NOT NULL, category TEXT NOT NULL, album_id TEXT NOT NULL,
+              album_artist_display TEXT, album TEXT, year INTEGER, field TEXT, field_label TEXT,
+              previous_value TEXT, current_value TEXT, change_count INTEGER, description TEXT NOT NULL,
+              source_kind TEXT NOT NULL, source_label TEXT NOT NULL, source_path TEXT);
+            """);
+        void Update(long at, string kind, string category, string artist, string album, int year, int count)
+        {
+            var iso = DateTimeOffset.FromUnixTimeMilliseconds(at).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'+00:00'");
+            Exec(Library, $"""
+                INSERT INTO library_updates (created_at, change_kind, category, album_id, album_artist_display, album, year,
+                  change_count, description, source_kind, source_label, source_path)
+                VALUES ('{iso}', '{kind}', '{category}', 'mb:{album}', '{artist}', '{album}', {year}, {count}, 'x',
+                  'library_import', 'Library import', 'D:\MUSIC\{artist} - {album} ({year})');
+                """);
+        }
+        Update(_now - 50 * Min, "removed", "album", "DJ Tiësto", "Space Age 1.0", 1998, 16);
+        Update(_now - 48 * Min, "changed", "metadata", "DJ Tiësto", "Magik", 1997, 1);
+        Update(_now - 45 * Min, "removed", "album", "Tiësto", "Magik Three", 1998, 16);
+        Update(_now - 40 * Min, "removed", "album", "DJ Tiësto", "Magik Four", 1999, 16);
+        var scraper = new MusicLibraryScraper(Library, backfillDays: 7);
+
+        var events = Scrape(scraper);
+        Assert.Equal(3, events.Count);
+        Assert.Equal("Removed DJ Tiësto – Space Age 1.0 (1998), 16 tracks", events[0].Title);
+
+        Update(_now - 5 * Min, "removed", "album", "Milk Inc.", "Closer", 2003, 14);
+        Assert.Equal("Removed Milk Inc. – Closer (2003), 14 tracks", Assert.Single(Scrape(scraper)).Title);
+
+        var lines = DailyReport.LoadActivity(_watchme, _now - 60 * Min, _now);
+        Assert.Equal(2, lines.Count);
+        Assert.EndsWith("Music Library   Removed 3 albums (48 tracks): DJ Tiësto: Space Age 1.0 (1998), Magik Four (1999); Tiësto: Magik Three (1998)", lines[0]);
+        Assert.EndsWith("Music Library   Removed Milk Inc. – Closer (2003), 14 tracks", lines[1]);
+    }
+
+    [Fact]
     public void Aurora_ng_listens_are_their_own_source()
     {
         Exec(NgHistory, $"""
