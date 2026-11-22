@@ -12,7 +12,8 @@ namespace Watchme.Agent.Scrapers;
 /// stars is not logged there. Emits musiclibrary/rating events.
 /// Also reads <c>library_updates</c>, Music Library's change log, for albums added to and removed
 /// from the library (by Aurora or any other import, or deleted): one musiclibrary/album_added or
-/// musiclibrary/album_removed event each.
+/// musiclibrary/album_removed event each; and for tag changes (genre, year, album artist...), one
+/// musiclibrary/tag_change event per field and album. Rating changes there are left to rating_events.
 /// </summary>
 internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : IScraper
 {
@@ -39,23 +40,103 @@ internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : 
             return [];
         using var db = AuroraScraper.OpenReadOnly(libraryDb);
         return [.. Ratings(db, context), .. AlbumUpdates(db, context, "new", "album_added", "Added"),
-                .. AlbumUpdates(db, context, "removed", "album_removed", "Removed")];
+                .. AlbumUpdates(db, context, "removed", "album_removed", "Removed"), .. TagChanges(db, context)];
     }
 
     private string Since(ScrapeContext context) =>
         DateTimeOffset.FromUnixTimeMilliseconds(context.Now - backfillDays * 24L * 60 * 60 * 1000)
             .UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss", CultureInfo.InvariantCulture);
 
+    private static bool HasUpdates(Microsoft.Data.Sqlite.SqliteConnection db)
+    {
+        using var check = db.CreateCommand();
+        check.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_updates';";
+        return check.ExecuteScalar() is not null;
+    }
+
+    /// <summary>
+    /// Tag changes Music Library saw when it re-read an album, whichever app made them:
+    /// "Changed album artist DJ Tiësto; Tiësto → DJ Tiësto on DJ Tiësto – Magik: First Flight (1997)".
+    /// The album rating is derived from track ratings, so it is left out like the ratings category.
+    /// </summary>
+    private List<WatchEvent> TagChanges(Microsoft.Data.Sqlite.SqliteConnection db, ScrapeContext context)
+    {
+        if (!HasUpdates(db))
+            return [];
+        var cursor = context.Cursor(Source, "tag_change", "update_id");
+        using var cmd = db.CreateCommand();
+        cmd.CommandText = $"""
+            SELECT id, created_at, import_run_id, album_id, album_artist_display, album, year,
+                   field, field_label, previous_value, current_value, change_count, description, source_path
+            FROM library_updates
+            WHERE {(cursor is null ? "created_at >= $since" : "id > $cursor")}
+              AND change_kind = 'changed' AND category IN ('metadata', 'tracks')
+              AND COALESCE(field, '') <> 'album_rating'
+            ORDER BY id;
+            """;
+        if (cursor is { } c)
+            cmd.Parameters.AddWithValue("$cursor", c);
+        else
+            cmd.Parameters.AddWithValue("$since", Since(context));
+
+        var events = new List<WatchEvent>();
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            if (!DateTimeOffset.TryParse(r.GetString(1), CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal, out var at))
+                continue;
+            string? S(int i) => r.IsDBNull(i) ? null : r.GetString(i);
+            var artist = S(4);
+            var albumTitle = S(5) ?? "?";
+            int? year = r.IsDBNull(6) ? null : r.GetInt32(6);
+            var album = (artist is null ? albumTitle : $"{artist} – {albumTitle}") + (year is null ? "" : $" ({year})");
+            var change = TagChange(S(7), S(8), S(9), S(10), S(12));
+            var data = new JsonObject
+            {
+                ["update_id"] = r.GetInt64(0),
+                ["import_run_id"] = r.IsDBNull(2) ? null : r.GetInt64(2),
+                ["album_id"] = r.GetString(3),
+                ["album"] = albumTitle,
+                ["artist"] = artist,
+                ["year"] = year,
+                ["field"] = S(7),
+                ["change"] = change,
+                ["before"] = S(9),
+                ["after"] = S(10),
+                ["count"] = r.IsDBNull(11) ? null : r.GetInt32(11),
+                ["description"] = S(12),
+                ["path"] = S(13),
+            };
+            events.Add(new WatchEvent(at.ToUnixTimeMilliseconds(), Source, "tag_change")
+            {
+                App = "music-library.exe",
+                Title = $"Changed {change} on {album}",
+                Data = data.ToJsonString(Json),
+                ExtId = $"update:{r.GetInt64(0)}",
+            });
+        }
+        return events;
+    }
+
+    /// <summary>"genre Reggaeton → Reggaetón", or the log's own words when there are no values ("1 track removed").</summary>
+    /// Track-level changes name the track only in the description, so that is used for them.
+    internal static string TagChange(string? field, string? label, string? before, string? after, string? description)
+    {
+        var trackLevel = field?.StartsWith("track_", StringComparison.Ordinal) == true && !string.IsNullOrEmpty(description);
+        if (!trackLevel && (before is not null || after is not null))
+        {
+            var name = string.IsNullOrEmpty(label) ? "tag" : char.ToLowerInvariant(label[0]) + label[1..];
+            return $"{name} {before ?? "∅"} → {after ?? "∅"}";
+        }
+        return string.IsNullOrEmpty(description) ? "tags" : char.ToLowerInvariant(description[0]) + description[1..];
+    }
+
     /// <summary>Albums added or removed: "Removed DJ Tiësto – Space Age 1.0 (1998), 16 tracks".</summary>
     private List<WatchEvent> AlbumUpdates(Microsoft.Data.Sqlite.SqliteConnection db, ScrapeContext context,
         string changeKind, string kind, string verb)
     {
-        using (var check = db.CreateCommand())
-        {
-            check.CommandText = "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'library_updates';";
-            if (check.ExecuteScalar() is null)
-                return [];
-        }
+        if (!HasUpdates(db))
+            return [];
         var cursor = context.Cursor(Source, kind, "update_id");
         using var cmd = db.CreateCommand();
         cmd.CommandText = $"""

@@ -119,14 +119,14 @@ public sealed class MusicScrapersTests : IDisposable
         Update(_now - 40 * Min, "removed", "album", "DJ Tiësto", "Magik Four", 1999, 16);
         var scraper = new MusicLibraryScraper(Library, backfillDays: 7);
 
-        var events = Scrape(scraper);
+        var events = Scrape(scraper).Where(e => e.Kind == "album_removed").ToList();
         Assert.Equal(3, events.Count);
         Assert.Equal("Removed DJ Tiësto – Space Age 1.0 (1998), 16 tracks", events[0].Title);
 
         Update(_now - 5 * Min, "removed", "album", "Milk Inc.", "Closer", 2003, 14);
         Assert.Equal("Removed Milk Inc. – Closer (2003), 14 tracks", Assert.Single(Scrape(scraper)).Title);
 
-        var lines = DailyReport.LoadActivity(_watchme, _now - 60 * Min, _now);
+        var lines = DailyReport.LoadActivity(_watchme, _now - 60 * Min, _now).Where(l => l.Contains("Removed")).ToList();
         Assert.Equal(2, lines.Count);
         Assert.EndsWith("Music Library   Removed 3 albums (48 tracks): DJ Tiësto: Space Age 1.0 (1998), Magik Four (1999); Tiësto: Magik Three (1998)", lines[0]);
         Assert.EndsWith("Music Library   Removed Milk Inc. – Closer (2003), 14 tracks", lines[1]);
@@ -166,6 +166,59 @@ public sealed class MusicScrapersTests : IDisposable
         Assert.EndsWith(@"Music Library   Added 2 albums (22 tracks) from C:\_ToAurora: Antiloop: LP (1997), Fastlane People (2000)", lines[0]);
         Assert.EndsWith("Aurora          Added album Westlife - Gravity (2010)", lines[1]);
     }
+
+    [Fact]
+    public void Tag_changes_are_one_line_per_album_unless_aurora_logged_them()
+    {
+        Exec(Library, """
+            CREATE TABLE library_updates (id INTEGER PRIMARY KEY AUTOINCREMENT, import_run_id INTEGER,
+              created_at TEXT NOT NULL, change_kind TEXT NOT NULL, category TEXT NOT NULL, album_id TEXT NOT NULL,
+              album_artist_display TEXT, album TEXT, year INTEGER, field TEXT, field_label TEXT,
+              previous_value TEXT, current_value TEXT, change_count INTEGER, description TEXT NOT NULL,
+              source_kind TEXT NOT NULL, source_label TEXT NOT NULL, source_path TEXT);
+            """);
+        void Change(long at, int run, string album, string? field, string? label, string? before, string? after,
+            string description, string category = "metadata")
+        {
+            var iso = DateTimeOffset.FromUnixTimeMilliseconds(at).UtcDateTime.ToString("yyyy-MM-dd'T'HH:mm:ss.fffffff'+00:00'");
+            string Q(string? s) => s is null ? "NULL" : $"'{s}'";
+            Exec(Library, $"""
+                INSERT INTO library_updates (import_run_id, created_at, change_kind, category, album_id, album_artist_display,
+                  album, year, field, field_label, previous_value, current_value, description, source_kind, source_label)
+                VALUES ({run}, '{iso}', 'changed', '{category}', 'mb:{album}', 'DJ Tiësto', '{album}', 1997, {Q(field)},
+                  {Q(label)}, {Q(before)}, {Q(after)}, '{description}', 'library_import', 'x');
+                """);
+        }
+        // Made in Music Library: two fields on one album, in one re-read.
+        Change(_now - 50 * Min, 1, "Magik", "album_artist_display", "Album artist", "DJ Tiësto; Tiësto", "DJ Tiësto", "Album artist changed");
+        Change(_now - 50 * Min, 1, "Magik", "canonical_genre", "Genre", "Trance", "Progressive Trance", "Genre changed");
+        Change(_now - 50 * Min, 1, "Magik", "album_rating", "Album rating", "80", "82", "Album rating changed");
+        Change(_now - 49 * Min, 2, "Magik", "rated_tracks", "Track ratings", "0", "1", "1 track rating added", "ratings");
+        // Made in Aurora (which logs it with a different folder), and Aurora's own track sync.
+        Change(_now - 30 * Min, 3, "Space Age", "year", "Year", "1997", "1998", "Year changed");
+        Change(_now - 20 * Min, 4, "Lost Treasures", "track_metadata", "Track metadata", null, null, "11 scoped track changes synchronized from Aurora");
+        _watchme.Insert([new WatchEvent(_now - 31 * Min, EventSources.Aurora, "tag_edit")
+            { Title = "Changed year 1997 → 1998 on DJ Tiësto – Space Age (16 tracks)",
+              Data = """{"album":"Space Age","folder":"D:\\MUSIC\\DJ Tiësto - Space Age (1998)"}""", ExtId = "tag:1" }]);
+
+        var events = Scrape(new MusicLibraryScraper(Library, backfillDays: 7)).Where(e => e.Kind == "tag_change").ToList();
+        Assert.Equal(4, events.Count);
+        Assert.Equal("Changed album artist DJ Tiësto; Tiësto → DJ Tiësto on DJ Tiësto – Magik (1997)", events[0].Title);
+        Assert.Equal("Changed 11 scoped track changes synchronized from Aurora on DJ Tiësto – Lost Treasures (1997)", events[3].Title);
+
+        var lines = DailyReport.LoadActivity(_watchme, _now - 60 * Min, _now);
+        Assert.Equal(2, lines.Count);
+        Assert.EndsWith("Music Library   Changed album artist DJ Tiësto; Tiësto → DJ Tiësto; genre Trance → Progressive Trance on DJ Tiësto – Magik (1997)", lines[0]);
+        Assert.EndsWith("Aurora          Changed year 1997 → 1998 on DJ Tiësto – Space Age (16 tracks)", lines[1]);
+    }
+
+    [Theory]
+    [InlineData("canonical_genre", "Genre", "Reggaeton", "Reggaetón", "Genre changed", "genre Reggaeton → Reggaetón")]
+    [InlineData("track_release_year", "Track release year", "1999", "1983", "Track release year changed for Rich from 1999 to 1983", "track release year changed for Rich from 1999 to 1983")]
+    [InlineData("total_tracks", "Tracks", "15", "14", "1 track removed", "tracks 15 → 14")]
+    [InlineData("album", "Album title", null, "LP", "x", "album title ∅ → LP")]
+    public void Tag_change_wording(string field, string label, string? before, string? after, string description, string expected) =>
+        Assert.Equal(expected, MusicLibraryScraper.TagChange(field, label, before, after, description));
 
     [Fact]
     public void Aurora_ng_listens_are_their_own_source()

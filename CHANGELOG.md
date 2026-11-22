@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.12.0] - 2026-11-22
+
+### Added
+
+- Tag changes: reads tag changes from Music Library's `library_updates` log (genre, year, album
+  artist, album title, publisher, track count...) as `musiclibrary/tag_change` events; the report
+  shows one line per album, leaving out changes Aurora already reported.
+
 ## [0.11.0] - 2026-11-22
 
 ### Added

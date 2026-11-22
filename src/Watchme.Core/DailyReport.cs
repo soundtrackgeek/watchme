@@ -236,6 +236,9 @@ public static class DailyReport
             .ToList();
         lines.AddRange(GitLines(events.Where(e => e.Source == EventSources.Git).ToList()));
         lines.AddRange(AlbumLines(events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "album_removed").ToList(), "Removed"));
+        lines.AddRange(TagChangeLines(
+            events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "tag_change").ToList(),
+            events.Where(e => e.Source == EventSources.Aurora && e.Kind == "tag_edit").ToList()));
         var added = events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "album_added").ToList();
         lines.AddRange(AlbumLines(added, "Added"));
         // Aurora logs the albums it imports too, under the same id; Music Library's line says more.
@@ -247,7 +250,7 @@ public static class DailyReport
         events = events
             .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git
                         && !(e.Source == EventSources.PowerShell && e.Kind == "command")
-                        && !(e.Source == EventSources.MusicLibrary && e.Kind is "album_removed" or "album_added")
+                        && !(e.Source == EventSources.MusicLibrary && e.Kind is "album_removed" or "album_added" or "tag_change")
                         && !(e.Source == EventSources.Aurora && e.Kind == "album_added" && addedIds.Contains(Str(e.Data, "album_id")))
                         && !(e.Source is EventSources.MusicLibrary or EventSources.AuroraNg && e.Kind == "rating"))
             .ToList();
@@ -411,6 +414,34 @@ public static class DailyReport
             ? $"Rated {withStars} {(withStars == 1 ? "track" : "tracks")} on {artist} – {album}: {string.Join("; ", parts)}"
             : $"Changed ratings on {artist} – {album}: {string.Join("; ", parts)}";
         return $"{Time(first.Ts)}–{Time(last.Ts)}  {source,-15} {what}";
+    }
+
+    /// <summary>
+    /// Tag changes Music Library logged, one line per album and re-read: "Changed album artist
+    /// DJ Tiësto; Tiësto → DJ Tiësto on DJ Tiësto – Magik: First Flight (1997)". Changes made in
+    /// Aurora are logged by Aurora too, with more detail, and Music Library re-reads the album
+    /// seconds to minutes later; those are left out so each edit is shown once.
+    /// </summary>
+    private static IEnumerable<(long Ts, string Line)> TagChangeLines(List<ActivityEvent> changes, List<ActivityEvent> auroraEdits)
+    {
+        var source = EventSources.DisplayName(EventSources.MusicLibrary);
+        var batches = changes
+            .GroupBy(e => (Str(e.Data, "import_run_id") ?? Str(e.Data, "update_id"), Str(e.Data, "album_id")))
+            .Select(g => g.OrderBy(e => e.Ts).ToList());
+        foreach (var batch in batches)
+        {
+            var first = batch[0];
+            if (batch.All(e => Str(e.Data, "description")?.Contains("from Aurora", StringComparison.OrdinalIgnoreCase) == true))
+                continue;
+            var title = Str(first.Data, "album");
+            // Matched on the album title: an edit in Aurora can rename the folder and the artist.
+            if (auroraEdits.Any(a => string.Equals(Str(a.Data, "album"), title, StringComparison.OrdinalIgnoreCase)
+                                     && first.Ts - a.Ts is >= -60_000 and <= 10 * 60_000))
+                continue;
+            var album = $"{Str(first.Data, "artist")} – {title}" + (Int(first, "year") is { } y ? $" ({y})" : "");
+            var what = string.Join("; ", batch.Select(e => Str(e.Data, "change")).Distinct());
+            yield return (first.Ts, $"{Time(first.Ts)}        {source,-15} Changed {Trim(what, 300)} on {album}");
+        }
     }
 
     /// <summary>Albums added or removed less than this far apart are one import or clean-up.</summary>

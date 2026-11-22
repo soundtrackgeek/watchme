@@ -105,7 +105,7 @@ that followed. A new folder that became a repo within 10 minutes is shown as one
 13:21–14:17  Git             Committed 6 times to watchme (master), pushed to origin: Initial commit; ...
 ```
 
-### Added and removed albums
+### Added and removed albums, and tag changes
 
 Music Library logs every change to the library in its `library_updates` table. Watchme reads
 the albums added to it (imported by Aurora or any other way) and removed from it (deleted in
@@ -117,6 +117,16 @@ own `album_added` events:
 ```
 10:22        Music Library   Added 2 albums (22 tracks) from C:\_ToAurora: Antiloop: LP (1997), Fastlane People (2000)
 14:44–15:02  Music Library   Removed 9 albums (137 tracks): DJ Tiësto: Space Age 1.0 (1998), Magik Four: A New Adventure (1999), ...
+```
+
+Tag changes (genre, year, album artist, album title, publisher, track count...) are read from
+the same log as `musiclibrary/tag_change` events, one per field, whichever app made them. The
+report shows one line per album and re-read. Edits made in Aurora are already reported by
+Aurora, with more detail, so a Music Library change to an album whose title Aurora edited from
+a minute before to 10 minutes before is left out, as are Aurora's own track syncs:
+
+```
+12:39        Music Library   Changed album artist DJ Tiësto; Tiësto → DJ Tiësto on DJ Tiësto – Magik: First Flight (1997)
 ```
 
 ### PowerShell commands
@@ -260,7 +270,7 @@ GROUP BY app ORDER BY minutes DESC;
 | `auroraDataDir`       | `null`  | Aurora's data folder; `null` means `%APPDATA%\com.soundtrackgeek.aurora` |
 | `auroraNgEnabled`     | `true`  | Read Aurora NG's listening history and rating log |
 | `auroraNgDataDir`     | `null`  | Aurora NG's data folder; `null` means `%LOCALAPPDATA%\aurora_ng` |
-| `musicLibraryEnabled` | `true`  | Read rating changes and added and removed albums from Music Library |
+| `musicLibraryEnabled` | `true`  | Read rating changes, tag changes and added and removed albums from Music Library |
 | `musicLibraryDb`      | `null`  | `null` means `%APPDATA%\com.local.musiclibrary\music-library.sqlite3` |
 | `totalCommanderEnabled` | `true` | Read Total Commander's file operation log |
 | `totalCommanderIni`   | `null`  | Path to `wincmd.ini`; `null` means `%APPDATA%\GHISLER\wincmd.ini` |
