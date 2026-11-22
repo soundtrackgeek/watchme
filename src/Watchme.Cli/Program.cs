@@ -63,8 +63,9 @@ static int Help(string? unknown = null)
           watchme status                                Is the agent running, and what has it recorded?
           watchme start                                 Start the background agent now
           watchme stop                                  Stop the background agent
-          watchme install                               Start the agent at every Windows logon (and now)
-          watchme uninstall                             Stop starting at logon, and stop the agent
+          watchme install                               Start the agent at every Windows logon (and now),
+                                                        and add watchme to your user PATH
+          watchme uninstall                             Undo install and stop the agent (data is kept)
 
         Data:   %LOCALAPPDATA%\Watchme\watchme.db (override with WATCHME_HOME)
         Config: %LOCALAPPDATA%\Watchme\config.json

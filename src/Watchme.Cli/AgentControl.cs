@@ -10,7 +10,8 @@ internal static class AgentControl
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string RunValueName = "Watchme";
 
-    private static string AgentPath => Path.Combine(AppContext.BaseDirectory, AgentIpc.ExeName);
+    private static string InstallDir => AppContext.BaseDirectory.TrimEnd('\\');
+    private static string AgentPath => Path.Combine(InstallDir, AgentIpc.ExeName);
 
     public static bool IsRunning()
     {
@@ -33,6 +34,12 @@ internal static class AgentControl
         using (var key = Registry.CurrentUser.CreateSubKey(RunKeyPath))
             key.SetValue(RunValueName, $"\"{AgentPath}\"");
         Console.WriteLine($"Registered to start at logon: {AgentPath}");
+
+        if (UserPath.Add(InstallDir))
+            Console.WriteLine($"Added to your PATH: {InstallDir}");
+        if (!UserPath.InCurrentProcess(InstallDir))
+            Console.WriteLine("Open a new terminal to use 'watchme' from anywhere.");
+
         return Start();
     }
 
@@ -41,6 +48,8 @@ internal static class AgentControl
         using (var key = Registry.CurrentUser.OpenSubKey(RunKeyPath, writable: true))
             key?.DeleteValue(RunValueName, throwOnMissingValue: false);
         Console.WriteLine("Removed from logon startup.");
+        if (UserPath.Remove(InstallDir))
+            Console.WriteLine($"Removed from your PATH: {InstallDir}");
         Stop();
         Console.WriteLine($"Your data is kept in {Paths.DataDir}.");
         return 0;
@@ -87,6 +96,7 @@ internal static class AgentControl
             var registered = key?.GetValue(RunValueName) as string;
             Console.WriteLine($"Startup:  {(registered is null ? "not registered" : registered)}");
         }
+        Console.WriteLine($"PATH:     {(UserPath.Contains(InstallDir) ? "yes" : "no")} ({InstallDir})");
         Console.WriteLine($"Data:     {Paths.DataDir}");
 
         if (!File.Exists(Paths.Database))

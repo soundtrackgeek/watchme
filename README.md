@@ -33,8 +33,18 @@ dotnet publish src/Watchme.Cli -c Release -o "$env:LOCALAPPDATA\Watchme\bin"
 & "$env:LOCALAPPDATA\Watchme\bin\watchme.exe" install
 ```
 
-`install` adds the agent to `HKCU\...\CurrentVersion\Run` (no admin needed) and starts it.
+`install` adds the agent to `HKCU\...\CurrentVersion\Run`, adds the install folder to your
+user PATH (open a new terminal afterwards to use `watchme` from anywhere), and starts the agent.
+No admin rights needed. `uninstall` undoes both and stops the agent; your data is kept.
 Publishing to a separate folder means you can keep rebuilding the repo while the agent runs.
+
+To update an installed copy, stop the agent first so its files are not locked:
+
+```powershell
+watchme stop
+dotnet publish src/Watchme.Cli -c Release -o "$env:LOCALAPPDATA\Watchme\bin"
+watchme start
+```
 
 ## Usage
 
@@ -42,7 +52,7 @@ Publishing to a separate folder means you can keep rebuilding the repo while the
 watchme report [today|yesterday|YYYY-MM-DD]   Summary of a day (default: today)
 watchme status                                Is the agent running, and what has it recorded?
 watchme start | stop                          Start or stop the background agent
-watchme install | uninstall                   Start the agent at every logon (or stop doing so)
+watchme install | uninstall                   Start at every logon and add to PATH (or undo both)
 ```
 
 Example report:
