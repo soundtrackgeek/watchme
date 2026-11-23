@@ -5,7 +5,8 @@ namespace Watchme.Core;
 
 /// <summary>
 /// Turns the events of a date range into what the web dashboard draws: totals, time per day and
-/// app, an hour-of-day grid, and per-app summaries (music, web, code, shell, files).
+/// app, an hour-of-day grid, per-app summaries (music, web, code, shell, files), and the use of
+/// apps you control without focusing them (<see cref="BackgroundUse"/>).
 /// Everything is computed from raw events, the same way the daily report does.
 /// </summary>
 public static class Dashboard
@@ -44,7 +45,7 @@ public static class Dashboard
     public sealed record Data(
         string From, string To, string[] Sources, Totals Totals, List<Day> Days, List<AppRow> Apps,
         double[][] FocusByHour, int[][] EventsByHour, Dictionary<string, int[]> SourceHours, Music Music, Web Web, Code Code, Shell Shell,
-        List<Count> FileOps);
+        List<Count> FileOps, List<BackgroundUse.AppUse> Background);
 
     public sealed record TimelineBlock(long Start, long End, string App, long ActiveMs, string? Title);
 
@@ -174,7 +175,8 @@ public static class Dashboard
             from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             to.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
             events.Select(e => e.Source).Distinct().Order(StringComparer.Ordinal).ToArray(),
-            totals, days, appRows, focusByHour, eventsByHour, sourceHours, music, web, code, shell, fileOps);
+            totals, days, appRows, focusByHour, eventsByHour, sourceHours, music, web, code, shell, fileOps,
+            BackgroundUse.Load(db, fromMs, toMs));
     }
 
     /// <summary>One day's timeline: focus blocks, idle stretches and the report's activity lines.</summary>

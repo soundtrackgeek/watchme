@@ -313,6 +313,26 @@ Activity in apps
 Apps under 30 seconds are summed into an `other` line, and timeline blocks under a minute into a
 `shorter visits` line, so short use is still counted.
 
+### Apps you use without focusing them
+
+Focus time only counts the window in front, so a music player you drive with global hotkeys
+(skip, rate, love) barely shows up. For Aurora NG and Aurora, the report adds a line under the app
+with what they logged instead:
+
+```text
+  Aurora NG.exe                 20m 03s  ██                        Aurora NG
+    └ hands-on 15h 00m · 884 skips · 144 ratings · 24h 16m playing
+```
+
+- **Hands-on** is your own actions grouped into stretches: a skip (timed when the track stopped)
+  or a rating or Love change less than 2 minutes after the previous one continues the stretch,
+  which lasts from its first action to its last plus 10 seconds.
+- **Playing** is the time tracks actually played.
+
+Both happen while you are working in other windows, so neither is added to *Active*. An app with
+background use is listed even when it had little or no focus (`—`), and days without focus time
+get an *In the background* section.
+
 ## Several days at once
 
 `watchme report` also takes a range and prints one summary for it:
@@ -374,8 +394,10 @@ For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you
 - **When:** an hour-of-day grid of focus minutes or app events.
 - **Day timeline:** one day's blocks of work by app, idle stretches, and the report's *Activity
   in apps* lines.
-- **Apps:** time, share, blocks and most-used window per app. Click an app to see its window
-  titles by focus time, and to show only that app's events in the event log.
+- **Apps:** time, share, blocks, hands-on time (for apps you use without focusing them, see
+  above) and most-used window per app. Click an app to see its background use (hands-on,
+  skips, ratings, playing), its window titles by focus time, and to show only that app's events
+  in the event log.
 - **Activity in apps:** events per day (or per hour, for a single day), one small chart per source.
 - **Music, Web, Code, PowerShell, Files:** top artists, albums, genres, ratings given and tracks loved; sites by
   pages and your searches; commits per repo, agent time per project and model; programs and

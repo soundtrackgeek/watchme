@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.20.0] - 2026-11-23
+
+### Added
+
+- Background use for apps you control without focusing them, such as Aurora NG with global
+  hotkeys. `watchme report` (a day or a range) shows a line under the app with *hands-on* time
+  (skips and rating or Love changes less than 2 minutes apart, as one stretch), the number of
+  skips and ratings, and the time tracks played. It is never added to Active. Apps with
+  background use stay listed even with little or no focus, and days without focus time show an
+  *In the background* section.
+- Dashboard: a Hands-on column in the Apps table, rows for apps used only in the background, and
+  their background use in the app's details.
+
 ## [0.19.0] - 2026-11-23
 
 ### Added

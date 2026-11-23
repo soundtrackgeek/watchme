@@ -206,7 +206,7 @@ tr.detail .bars .name { max-width: 520px; }
 
   <div class="grid g2">
     <section class="card">
-      <div class="card-head"><h2>Apps</h2><span class="sub">focus time in range · click an app for its windows</span></div>
+      <div class="card-head"><h2>Apps</h2><span class="sub">focus time in range, plus hands-on time for apps you control without focusing them · click an app for details</span></div>
       <div class="scroll" id="apps"></div>
     </section>
     <section class="card">
@@ -745,15 +745,23 @@ function renderTimeline(day) {
 // ---------- apps table ----------
 function renderApps(d) {
   const host = $("#apps");
-  if (!d.apps.length) { host.replaceChildren(el("div", { class: "empty", text: "No apps had focus in this range." })); return; }
-  const total = d.totals.activeMs, top = d.apps[0].ms;
-  const rows = d.apps.slice(0, 25).flatMap((a) => {
-    const open = state.openApps.has(a.app);
+  const bg = new Map(d.background.map((b) => [b.app.toLowerCase(), b]));
+  const bgOf = (app) => bg.get(app.toLowerCase());
+  // Apps used in the background stay listed however little focus they had, or none at all.
+  const listed = d.apps.filter((a, i) => i < 25 || bgOf(a.app));
+  const focused = new Set(d.apps.map((a) => a.app.toLowerCase()));
+  for (const b of d.background)
+    if (!focused.has(b.app.toLowerCase())) listed.push({ app: b.app, ms: 0, blocks: 0, topTitle: null, titles: [] });
+  if (!listed.length) { host.replaceChildren(el("div", { class: "empty", text: "No apps had focus in this range." })); return; }
+  const total = d.totals.activeMs, top = Math.max(1, d.apps[0]?.ms || 0);
+  const rows = listed.flatMap((a) => {
+    const open = state.openApps.has(a.app), b = bgOf(a.app);
     const tr = el("tr", { class: "expandable" + (open ? " open" : ""), "aria-expanded": String(open) },
       el("td", {}, el("span", { class: "caret", text: open ? "▾" : "▸" }), el("span", { class: "dot", style: { background: appColor(a.app) } }), appName(a.app)),
-      el("td", { class: "num" }, el("span", { class: "share", style: { width: Math.max(2, (a.ms / top) * 80) + "px", background: appColor(a.app) } }), dur(a.ms)),
-      el("td", { class: "num", text: Math.round((a.ms / total) * 100) + "%" }),
+      el("td", { class: "num" }, a.ms ? el("span", { class: "share", style: { width: Math.max(2, (a.ms / top) * 80) + "px", background: appColor(a.app) } }) : "", a.ms ? dur(a.ms) : "—"),
+      el("td", { class: "num", text: a.ms && total ? Math.round((a.ms / total) * 100) + "%" : "" }),
       el("td", { class: "num", text: a.blocks || "" }),
+      el("td", { class: "num", text: b?.handsOnMs ? dur(b.handsOnMs) : "", title: b ? backgroundText(b) : "" }),
       el("td", { class: "title", text: a.topTitle || "", title: a.topTitle || "" }));
     activate(tr, () => {
       if (!state.openApps.delete(a.app)) state.openApps.add(a.app);
@@ -761,19 +769,35 @@ function renderApps(d) {
       host.querySelector(`tr[data-app="${CSS.escape(a.app)}"]`)?.focus();
     });
     tr.dataset.app = a.app;
-    return open ? [tr, el("tr", { class: "detail" }, el("td", { colspan: 5 }, appDetail(a)))] : [tr];
+    return open ? [tr, el("tr", { class: "detail" }, el("td", { colspan: 6 }, appDetail(a, b)))] : [tr];
   });
   const table = el("table", {},
     el("thead", {}, el("tr", {}, el("th", { text: "App" }), el("th", { class: "num", text: "Time" }), el("th", { class: "num", text: "Share" }),
-      el("th", { class: "num", text: "Blocks", title: "Stretches of a minute or more" }), el("th", { text: "Most-used window" }))),
+      el("th", { class: "num", text: "Blocks", title: "Stretches of a minute or more" }),
+      el("th", { class: "num", text: "Hands-on", title: "Use without focus: skips and ratings less than 2 minutes apart, as one stretch. Not part of focus time." }),
+      el("th", { text: "Most-used window" }))),
     el("tbody", {}, ...rows));
-  const extra = d.apps.length > 25 ? el("div", { class: "empty", text: `+ ${d.apps.length - 25} more apps, ${dur(d.apps.slice(25).reduce((s, a) => s + a.ms, 0))} in total` }) : null;
+  const hidden = d.apps.filter((a) => !listed.includes(a));
+  const extra = hidden.length ? el("div", { class: "empty", text: `+ ${hidden.length} more apps, ${dur(hidden.reduce((s, a) => s + a.ms, 0))} in total` }) : null;
   host.replaceChildren(table, extra || "");
 }
 
-function appDetail(a) {
+// "884 skips · 144 ratings · 24h 15m playing · 61 stretches"
+function backgroundText(b) {
+  return [b.skips ? `${num(b.skips)} skips` : null, b.ratings ? `${num(b.ratings)} ratings` : null,
+    b.playingMs ? `${dur(b.playingMs)} playing` : null, b.bursts ? `${num(b.bursts)} hands-on stretches` : null].filter(Boolean).join(" · ");
+}
+
+function appDetail(a, b) {
   const box = el("div", {});
-  box.append(el("h3", { style: { marginTop: "0" }, text: "Windows by focus time" }));
+  if (b) {
+    box.append(el("h3", { style: { marginTop: "0" }, text: "In the background" }));
+    const bgStats = el("div", { class: "stats" });
+    stats(bgStats, [b.handsOnMs ? [dur(b.handsOnMs), "hands-on"] : null, b.skips ? [num(b.skips), "skips"] : null,
+      b.ratings ? [num(b.ratings), "ratings"] : null, b.playingMs ? [dur(b.playingMs), "playing"] : null]);
+    box.append(bgStats, el("div", { class: "empty", text: "Skips and ratings less than 2 minutes apart count as one hands-on stretch. Like playing time, it runs alongside focus in other apps, so it is not part of focus time." }));
+  }
+  box.append(el("h3", { style: b ? {} : { marginTop: "0" }, text: "Windows by focus time" }));
   const list = el("div", {});
   if (a.titles.length) barList(list, a.titles.map((t) => ({ name: t.title, n: t.ms })), { fmt: (v) => dur(v), note: () => "focus" });
   else list.append(el("div", { class: "empty", text: "No window titles recorded for this app." }));

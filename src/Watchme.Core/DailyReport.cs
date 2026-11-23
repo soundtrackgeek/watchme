@@ -138,6 +138,12 @@ public static class DailyReport
             }
             output.WriteLine("No focus time recorded (the agent was not running), but apps logged this:");
             output.WriteLine();
+            var backgroundOnly = BackgroundUse.Load(db, from, to);
+            if (backgroundOnly.Count > 0)
+            {
+                PrintBackground(backgroundOnly, output);
+                output.WriteLine();
+            }
             output.WriteLine("Activity in apps");
             foreach (var line in imported)
                 output.WriteLine($"  {line}");
@@ -154,10 +160,23 @@ public static class DailyReport
             .OrderByDescending(a => a.Ms)
             .ToList();
         var top = byApp[0].Ms;
-        var shown = byApp.Where(a => a.Ms >= 30_000).Take(20).ToList();
+        var backgroundUse = BackgroundUse.Load(db, from, to);
+        var background = backgroundUse.ToDictionary(b => b.App, StringComparer.OrdinalIgnoreCase);
+        // An app you use in the background stays listed even when it barely had focus.
+        var shown = byApp.Where((a, i) => (a.Ms >= 30_000 && i < 20) || background.ContainsKey(a.App)).ToList();
         foreach (var (app, ms) in shown)
+        {
             output.WriteLine($"  {Trim(app, 28),-28} {Duration(ms),8}  {Bar(ms, top)}");
-        var rest = byApp.Skip(shown.Count).ToList();
+            if (background.Remove(app, out var use))
+                output.WriteLine(BackgroundLine(use));
+        }
+        // Background use of apps that never had focus.
+        foreach (var use in backgroundUse.Where(b => background.ContainsKey(b.App)))
+        {
+            output.WriteLine($"  {Trim(use.App, 28),-28} {"—",8}");
+            output.WriteLine(BackgroundLine(use));
+        }
+        var rest = byApp.Except(shown).ToList();
         if (rest.Count > 0)
         {
             var restMs = rest.Sum(a => a.Ms);
@@ -1000,6 +1019,20 @@ public static class DailyReport
         var t = TimeSpan.FromMilliseconds(ms);
         return t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes:00}m" : $"{t.Minutes}m {t.Seconds:00}s";
     }
+
+    /// <summary>The line under an app for its use without focus: "    └ hands-on 1h 40m · 884 skips · …".</summary>
+    /// <summary>A section of its own for background use, when no app had focus to hang it under.</summary>
+    internal static void PrintBackground(IEnumerable<BackgroundUse.AppUse> uses, TextWriter output)
+    {
+        output.WriteLine("In the background");
+        foreach (var use in uses)
+        {
+            output.WriteLine($"  {Trim(use.App, 28)}");
+            output.WriteLine(BackgroundLine(use));
+        }
+    }
+
+    internal static string BackgroundLine(BackgroundUse.AppUse use) => $"    └ {BackgroundUse.Describe(use)}";
 
     internal static string Trim(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
 }

@@ -46,6 +46,11 @@ public static class RangeReport
             PrintApps(d, output);
             output.WriteLine();
         }
+        else if (d.Background.Count > 0)
+        {
+            DailyReport.PrintBackground(d.Background, output);
+            output.WriteLine();
+        }
 
         var lines = Highlights(d);
         if (lines.Count > 0)
@@ -84,13 +89,23 @@ public static class RangeReport
     {
         output.WriteLine("Apps");
         var top = d.Apps[0].Ms;
-        var shown = d.Apps.Where(a => a.Ms >= 60_000).Take(15).ToList();
+        var background = d.Background.ToDictionary(b => b.App, StringComparer.OrdinalIgnoreCase);
+        // An app you use in the background stays listed even when it barely had focus.
+        var shown = d.Apps.Where((a, i) => (a.Ms >= 60_000 && i < 15) || background.ContainsKey(a.App)).ToList();
         foreach (var a in shown)
         {
             var title = a.TopTitle is null ? "" : $"  {DailyReport.Trim(a.TopTitle, 50)}";
             output.WriteLine($"  {DailyReport.Trim(a.App, 28),-28} {Dur(a.Ms),8}  {DailyReport.Bar(a.Ms, top),-24}{title}");
+            if (background.Remove(a.App, out var use))
+                output.WriteLine(DailyReport.BackgroundLine(use));
         }
-        var rest = d.Apps.Skip(shown.Count).ToList();
+        // Background use of apps that never had focus.
+        foreach (var use in d.Background.Where(b => background.ContainsKey(b.App)))
+        {
+            output.WriteLine($"  {DailyReport.Trim(use.App, 28),-28} {"—",8}");
+            output.WriteLine(DailyReport.BackgroundLine(use));
+        }
+        var rest = d.Apps.Except(shown).ToList();
         if (rest.Count > 0)
             output.WriteLine($"  {$"other ({rest.Count})",-28} {Dur(rest.Sum(a => a.Ms)),8}");
     }
