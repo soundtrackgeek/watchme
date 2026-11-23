@@ -4,6 +4,16 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.15.0] - 2026-11-23
+
+### Added
+
+- `watchme update [repo]`: builds Watchme from the repo it was built from (stamped into the build)
+  or the one given, into a staging folder; then stops the agent, replaces the installed files and
+  restarts the agent with the new version. Files in use (`watchme.exe` itself, a running
+  dashboard) are moved aside as `*.old` and removed by a later update. A failed build leaves the
+  installed copy unchanged.
+
 ## [0.14.0] - 2026-11-23
 
 ### Added

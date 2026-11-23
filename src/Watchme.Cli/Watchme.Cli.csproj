@@ -11,6 +11,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Watchme.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <EmbeddedResource Include="dashboard.html" LogicalName="Watchme.Cli.dashboard.html" />
   </ItemGroup>
 

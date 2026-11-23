@@ -217,7 +217,21 @@ user PATH (open a new terminal afterwards to use `watchme` from anywhere), and s
 No admin rights needed. `uninstall` undoes both and stops the agent; your data is kept.
 Publishing to a separate folder means you can keep rebuilding the repo while the agent runs.
 
-To update an installed copy, stop the agent first so its files are not locked:
+To update an installed copy after pulling or changing the source:
+
+```powershell
+watchme update
+```
+
+This builds the repo the installed copy was built from (or the one you name:
+`watchme update C:\_code\watchme`) into a staging folder, stops the agent, replaces the installed
+files and starts the agent again. A failed build changes nothing. Files still in use, such as
+`watchme.exe` itself or a `watchme dashboard` left running, are renamed to `*.old` and removed by
+a later update; a running dashboard keeps the old version until you restart it.
+
+Copies older than 0.15.0 don't have `update` yet. Update those once by hand, with the agent
+stopped and any `watchme dashboard` closed (a plain `dotnet publish` without `-o` builds into the
+repo and leaves the installed copy unchanged):
 
 ```powershell
 watchme stop
@@ -232,6 +246,7 @@ watchme report [today|yesterday|YYYY-MM-DD]   Summary of a day (default: today)
 watchme status                                Is the agent running, and what has it recorded?
 watchme start | stop                          Start or stop the background agent
 watchme install | uninstall                   Start at every logon and add to PATH (or undo both)
+watchme update [repo]                         Rebuild from source and replace the installed copy
 watchme powershell install|uninstall|status   Log the commands you run in PowerShell 7
 watchme dashboard [--port N] [--no-open]      Charts and tables in your browser
 ```

@@ -4,7 +4,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <Version>0.14.0</Version>
+    <Version>0.15.0</Version>
     <Authors>Jørn Tillnes</Authors>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Lets `watchme update` find the repo it was built from. -->
+    <AssemblyMetadata Include="WatchmeSourceDir" Value="$(MSBuildThisFileDirectory)" />
+  </ItemGroup>
 </Project>

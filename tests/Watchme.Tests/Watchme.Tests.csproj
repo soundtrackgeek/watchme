@@ -18,6 +18,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Watchme.Core\Watchme.Core.csproj" />
     <ProjectReference Include="..\..\src\Watchme.Agent\Watchme.Agent.csproj" />
+    <ProjectReference Include="..\..\src\Watchme.Cli\Watchme.Cli.csproj" />
   </ItemGroup>
 
 </Project>
