@@ -141,6 +141,10 @@ internal sealed class TrayIcon : IDisposable
             _statusEnd,
             _pauseMenu,
             _resume,
+            new ToolStripMenuItem("Forget the last 15 minutes…", null, (_, _) => ForgetRecent(TimeSpan.FromMinutes(15)))
+            {
+                ToolTipText = "Removes what was recorded, app history read later included (watchme forget 15m).",
+            },
             new ToolStripSeparator(),
             dashboard,
             new ToolStripMenuItem("Copy today's report", null, (_, _) => CopyReport()),
@@ -235,6 +239,28 @@ internal sealed class TrayIcon : IDisposable
         using var db = Database.Open(Paths.Database);
         PauseState.End(db, PauseState.FilePath, Clock.NowMs());
         Apply(_status.WithPause(null));
+    });
+
+    /// <summary>The same as <c>watchme forget 15m</c>, after saying how much it removes.</summary>
+    private void ForgetRecent(TimeSpan span) => Act("forget", () =>
+    {
+        var now = Clock.NowMs();
+        var selection = new Forgetting.Selection(now - (long)span.TotalMilliseconds, now, []);
+        using var db = Database.Open(Paths.Database);
+        var count = Forgetting.Preview(db, selection, redact: false).Items.Count;
+        var minutes = (int)span.TotalMinutes;
+        var answer = MessageBox.Show(
+            $"Forget the last {minutes} minutes?\n\n" +
+            (count == 0 ? "Nothing has been recorded yet; " : $"{count} recorded events are removed for good, and ") +
+            "what apps logged in this time (Edge, PowerShell, plays...) is left out when it is read later. " +
+            "The time stops counting as active.",
+            "Forget", MessageBoxButtons.OKCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
+        if (answer != DialogResult.OK || Volatile.Read(ref _disposed) == 1)
+            return;
+        // From when it was asked, so minutes spent reading the question are not forgotten as well.
+        var done = Forgetting.Apply(db, selection, redact: false, Clock.NowMs());
+        Log.Info($"Forgot the last {minutes} minutes from the tray ({done.Items.Count} events).");
+        Notify($"Forgot the last {minutes} minutes.");
     });
 
     private void CopyReport() => Task.Run(() =>

@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.24.0] - 2026-11-23
+
+### Added
+
+- `watchme forget`: takes events out afterwards, for when you forgot to pause.
+  `watchme forget 15m` or `14:10..14:35` (`--day` for another day) removes a stretch of time
+  from every source, stops it counting as active, and leaves out app history from that time that
+  is read later. `--match WORDS` removes only the events holding the words (window titles are
+  blanked instead, so their time stays), `--source` keeps to one source, and `--redact` keeps the
+  events without titles and text. It shows what it will do and asks first (`--yes` skips that).
+- Removed app history is never read back in: Edge, PowerShell, plays and the rest stay forgotten
+  even though the apps still have them (database schema 3).
+- The report says `Forgot 14:10–14:35`, and the dashboard's day timeline marks forgotten time.
+- Dashboard: **Forget this event** and **Keep without title and text** in an event's details.
+- Tray icon: **Forget the last 15 minutes…**.
+
 ## [0.23.1] - 2026-11-23
 
 ### Fixed

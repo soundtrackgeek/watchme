@@ -901,6 +901,14 @@ function renderTimeline(day) {
     hover(r, (ev) => showTip(ev, `${clock(s)}–${clock(e)}`, [{ value: dur(e - s), label: "paused" }], "Nothing was recorded (watchme pause)"));
     root.append(r);
   }
+  const forgotten = (day.forgotten || []).filter(([s, e]) => e > t0 && s < t1);
+  for (const [s, e, redacted] of forgotten) {
+    const fx = x(Math.max(s, t0)), fw = Math.max(2, x(Math.min(e, t1)) - fx);
+    const r = svg("rect", { x: fx, y: m.t + lane + 6, width: fw, height: idleLane, rx: 2, fill: css("--s7") });
+    hover(r, (ev) => showTip(ev, `${clock(s)}–${clock(e)}`, [{ value: dur(e - s), label: redacted ? "redacted" : "forgotten" }],
+      redacted ? "Kept without titles and text (watchme forget --redact)" : "Taken out afterwards (watchme forget)"));
+    root.append(r);
+  }
   // Outline the part of the day the activity list is filtered to.
   if (state.span) {
     const hs = Math.max(t0, dayStart + state.span[0] * 6e4), he = Math.min(t1, dayStart + state.span[1] * 6e4);
@@ -915,6 +923,7 @@ function renderTimeline(day) {
   if (shown.length < apps.length) items.push(el("span", {}, el("i", { style: { background: css("--other") } }), "Other apps"));
   items.push(el("span", {}, el("i", { style: { background: css("--axis"), height: "4px" } }), "Idle"));
   if (paused.length) items.push(el("span", {}, el("i", { style: { background: css("--s4"), height: "4px" } }), "Paused"));
+  if (forgotten.length) items.push(el("span", {}, el("i", { style: { background: css("--s7"), height: "4px" } }), "Forgotten"));
   $("#timeline-legend").replaceChildren(...items);
 }
 
@@ -1153,7 +1162,7 @@ function logRow(r) {
     const open = tr.classList.toggle("open");
     tr.setAttribute("aria-expanded", String(open));
     tr.querySelector(".caret").textContent = open ? "▾" : "▸";
-    if (open) tr.after(el("tr", { class: "detail" }, el("td", { colspan: 5 }, eventDetail(r))));
+    if (open) tr.after(el("tr", { class: "detail" }, el("td", { colspan: 5 }, eventDetail(r), forgetActions(r, tr))));
     else if (tr.nextElementSibling?.classList.contains("detail")) tr.nextElementSibling.remove();
   });
   return tr;
@@ -1177,6 +1186,43 @@ function eventDetail(r) {
   else if (data != null) add("data", data);
   add("event id", r.id);
   return kv;
+}
+
+// Forget one event, like `watchme forget --match` would: removed for good (app history read
+// again won't bring it back), or kept without its title and text. A window's focus event always
+// keeps its time, so for focus only the redacting button is offered.
+function forgetActions(r, tr) {
+  if (["session", "agent", "idle"].includes(r.source)) return null;
+  const box = el("div", { class: "detail-actions" });
+  const run = async (redact, button) => {
+    const what = redact ? "Keep this event without its title and text?" : "Forget this event? It is removed for good and won't be read again from the app's history.";
+    if (!confirm(what)) return;
+    button.disabled = true;
+    try {
+      const res = await postJson(`/api/forget?id=${r.id}${redact ? "&redact=1" : ""}`);
+      const detail = tr.nextElementSibling?.classList.contains("detail") ? tr.nextElementSibling : null;
+      detail?.remove();
+      if (res.removed) { tr.remove(); return; }
+      // Redacted: the row stays, closed; opening it again after a refresh shows what is left.
+      if (r.title) { r.title = "[redacted]"; const cell = tr.querySelector(".title"); cell.textContent = cell.title = r.title; }
+      r.data = null;
+      tr.classList.remove("open");
+      tr.setAttribute("aria-expanded", "false");
+      tr.querySelector(".caret").textContent = "▸";
+    } catch (err) {
+      $("#error").replaceChildren(el("div", { class: "card error", text: `Could not forget the event: ${err.message}` }));
+      button.disabled = false;
+    }
+  };
+  if (r.source !== "focus") {
+    const forget = el("button", { class: "iconbtn", text: "Forget this event" });
+    forget.addEventListener("click", () => run(false, forget));
+    box.append(forget);
+  }
+  const redact = el("button", { class: "iconbtn", text: r.source === "focus" ? "Blank this title (keep the time)" : "Keep without title and text" });
+  redact.addEventListener("click", () => run(true, redact));
+  box.append(redact);
+  return box;
 }
 
 // ---------- wiring ----------

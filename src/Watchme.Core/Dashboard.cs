@@ -49,7 +49,9 @@ public static class Dashboard
 
     public sealed record TimelineBlock(long Start, long End, string App, long ActiveMs, string? Title);
 
-    public sealed record DayDetail(string Date, long ActiveMs, List<TimelineBlock> Blocks, List<long[]> Idle, List<string> Activity, List<long[]> Paused);
+    /// <param name="Forgotten">Stretches taken out with <c>watchme forget</c>: start, end, and 1 when only redacted.</param>
+    public sealed record DayDetail(string Date, long ActiveMs, List<TimelineBlock> Blocks, List<long[]> Idle, List<string> Activity, List<long[]> Paused,
+        List<long[]> Forgotten);
 
     /// <summary>One raw event; <see cref="Data"/> is the event's JSON exactly as stored.</summary>
     public sealed record EventRow(long Id, long Ts, string Source, string Kind, string? App, string? Title, string? Data);
@@ -217,7 +219,9 @@ public static class Dashboard
 
         return new DayDetail(day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), spans.Sum(s => s.DurationMs),
             blocks, idle, DailyReport.LoadActivity(db, from, to, spans),
-            PauseState.Windows(db, from, to).Select(w => new[] { Math.Max(w.Start, from), Math.Min(w.End, Math.Min(to, Clock.NowMs())) }).ToList());
+            PauseState.Windows(db, from, to).Select(w => new[] { Math.Max(w.Start, from), Math.Min(w.End, Math.Min(to, Clock.NowMs())) }).ToList(),
+            Forgetting.Windows(db, from, to).Where(w => w.Source is null)
+                .Select(w => new[] { Math.Max(w.Start, from), Math.Min(w.End, to), w.Redact ? 1L : 0L }).ToList());
     }
 
     /// <summary>

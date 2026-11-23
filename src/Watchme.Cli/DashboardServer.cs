@@ -159,6 +159,19 @@ internal static class DashboardServer
             return Results.Json(new { resumed = wasPaused }, Json);
         });
 
+        // One event from the log's details: like `watchme forget --match`, a focus event keeps its time.
+        app.MapPost("/api/forget", (HttpContext ctx) =>
+        {
+            if (!FromThisPage(ctx))
+                return Results.StatusCode(StatusCodes.Status403Forbidden);
+            if (!long.TryParse(ctx.Request.Query["id"], out var id))
+                return Results.BadRequest("Which event? Pass id.");
+            var redact = ctx.Request.Query["redact"] == "1";
+            using var db = Database.Open(Paths.Database);
+            var plan = Forgetting.Apply(db, new Forgetting.Selection(null, null, [], EventId: id), redact, Clock.NowMs());
+            return Results.Json(new { plan.Removed, Redacted = plan.RedactedCount }, Json);
+        });
+
         var url = $"http://127.0.0.1:{port}/";
         try
         {

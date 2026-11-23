@@ -5,13 +5,32 @@ namespace Watchme.Core;
 /// <summary>The SQLite event store. Not thread-safe: the agent uses it from its single writer loop.</summary>
 public sealed class Database : IDisposable
 {
-    public const int SchemaVersion = 2;
+    public const int SchemaVersion = 3;
 
     // v2: scraped events carry an external id, so re-reading an overlapping window of an
     // app's own data never creates duplicates.
     private const string SchemaV2 = """
         ALTER TABLE events ADD COLUMN ext_id TEXT;
         CREATE UNIQUE INDEX ux_events_source_ext_id ON events (source, ext_id) WHERE ext_id IS NOT NULL;
+        """;
+
+    // v3: `watchme forget`. A forgotten scraped event leaves its (source, ext_id) behind, so reading
+    // the app's history again never brings it back; forgotten (or redacted) stretches of time keep
+    // app history that is read later out too.
+    private const string SchemaV3 = """
+        CREATE TABLE forgotten (
+            source TEXT NOT NULL,
+            ext_id TEXT NOT NULL,
+            PRIMARY KEY (source, ext_id)
+        ) WITHOUT ROWID;
+        CREATE TABLE forgotten_windows (
+            id       INTEGER PRIMARY KEY,
+            start_ts INTEGER NOT NULL,
+            end_ts   INTEGER NOT NULL,
+            redact   INTEGER NOT NULL,   -- 1: events kept with titles and text removed; 0: removed
+            source   TEXT,               -- one source only, or NULL for all
+            created  INTEGER NOT NULL
+        );
         """;
 
     // The schema keeps only raw facts. `focus_spans` turns them into intervals:
@@ -99,6 +118,8 @@ public sealed class Database : IDisposable
             Execute(SchemaV1, tx);
         if (version < 2)
             Execute(SchemaV2, tx);
+        if (version < 3)
+            Execute(SchemaV3, tx);
         Execute($"PRAGMA user_version = {SchemaVersion};", tx);
         tx.Commit();
     }
@@ -111,9 +132,11 @@ public sealed class Database : IDisposable
         using var tx = _connection.BeginTransaction();
         using var cmd = _connection.CreateCommand();
         cmd.Transaction = tx;
+        // Skips duplicates (the unique ext_id index) and events the user forgot (see Forgetting).
         cmd.CommandText = """
             INSERT INTO events (ts, source, kind, app, pid, exe, title, data, ext_id)
-            VALUES ($ts, $source, $kind, $app, $pid, $exe, $title, $data, $ext)
+            SELECT $ts, $source, $kind, $app, $pid, $exe, $title, $data, $ext
+            WHERE $ext IS NULL OR NOT EXISTS (SELECT 1 FROM forgotten WHERE source = $source AND ext_id = $ext)
             ON CONFLICT DO NOTHING;
             """;
         var pTs = cmd.Parameters.Add("$ts", SqliteType.Integer);

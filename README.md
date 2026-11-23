@@ -281,6 +281,8 @@ watchme search WORDS... [options]             Find events in the whole history
 watchme status                                Is the agent running, and is every source working?
 watchme pause [30m|2h|1h30m|14:30]            Record nothing for a while; resumes by itself
 watchme resume                                End a pause early
+watchme forget 15m|14:10..14:35 [--day DAY]   Remove what was recorded in a stretch of time
+watchme forget --match WORDS [--days N]       Remove the events holding these words
 watchme start | stop                          Start or stop the background agent
 watchme install | uninstall                   Start at every logon and add to PATH (or undo both)
 watchme update [repo]                         Rebuild from source and replace the installed copy
@@ -392,11 +394,51 @@ Its menu has:
 - The sources that need a look, each with what is wrong. Click one to open `agent.log`.
 - **Open dashboard** (or double-click the icon). This starts the dashboard without a terminal
   window the first time and opens it in your browser. The server stops when the agent does.
+- **Forget the last 15 minutes…** is `watchme forget 15m` (see [Forgetting](#forgetting)), after
+  saying how many events it removes.
 - **Copy today's report** puts the text of `watchme report` on the clipboard.
 - **Edit settings (config.json)**, **Open data folder** and **Quit Watchme** (stops recording until
   your next logon or `watchme start`).
 
 If you'd rather not have the icon, set `"trayIcon": false` in `config.json`.
+
+## Forgetting
+
+For when you forgot to pause: `watchme forget` takes things out afterwards.
+
+```powershell
+watchme forget 15m                              # the last 15 minutes (or 2h, 1h30m, 45)
+watchme forget 14:10..14:35                     # today; 14:10..now works too
+watchme forget 22:00..24:00 --day yesterday     # another day (YYYY-MM-DD works too)
+watchme forget --match "mybank" --days 30       # every event holding these words
+watchme forget 2h --match "mybank"              # ...only in the last 2 hours
+watchme forget 1h --source edge                 # one source only
+watchme forget 14:10..14:35 --redact            # keep the events, without titles and text
+```
+
+It lists what it will do, with a few of the events, and asks before changing anything (`--yes`
+skips the question; it is needed when the input isn't a terminal). It can't be undone.
+
+- **A stretch of time** is removed from every source: window titles, processes, pages, commands,
+  plays, file operations. The time stops counting as active (Active in the report, the
+  dashboard), while idle, lock and agent start/stop stay so the rest of the day adds up. What
+  apps logged in that time but Watchme hasn't read yet (Edge writes its history late, or the
+  agent wasn't running) is left out when it is read, like during a pause. The report says
+  `Forgot 14:10–14:35`, and the dashboard's day timeline marks it.
+- **Words** (`--match`, repeat it for several) match an event's title and its data: pages,
+  commands, folders, artists, prompts. Matching app history is removed. Matching window titles
+  are blanked to `[redacted]` but keep their time, so the time isn't handed to another app.
+- **`--redact`** keeps the events and their time but replaces titles and text in their data
+  with `[redacted]`; numbers (durations, ratings) stay. With a stretch of time, app history read
+  later is redacted the same way.
+
+Removed app history stays removed: the next read of Edge's history, the PowerShell log or Aurora's
+plays won't bring it back, even though those apps still have it. To keep a site or a window title
+out from now on, add it to `edgePrivateSites` or `redactTitlePatterns` in
+[`config.json`](#configuration).
+
+In the dashboard's event log, a row's details have **Forget this event** and **Keep without title
+and text** (for a window title: **Blank this title**).
 
 ## Several days at once
 
@@ -471,7 +513,7 @@ For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you
   folders; Total Commander operations and library changes.
 - **Event log:** the raw events, newest first, filterable by source and app. The search matches
   titles and the event's data too (URLs, commands, folders, artists). Click a row to see
-  everything recorded with it.
+  everything recorded with it, and to forget or redact that event (see [Forgetting](#forgetting)).
 
 Click a day in *Focus time per day* or *Activity in apps* to open it in the day timeline. Click
 an hour in *When* (or in a single day's *Activity in apps* charts) to open that day with its
@@ -545,7 +587,8 @@ Set `WATCHME_HOME` to use a different data folder (handy for testing).
 
 Everything stays in the local database. Window titles can still contain sensitive text
 (email subjects, document names), so extend the redaction lists to taste, and use
-`watchme pause` for the stretches that shouldn't be recorded at all.
+`watchme pause` for the stretches that shouldn't be recorded at all. When something slipped
+through anyway, `watchme forget` takes it out afterwards, app history included.
 
 ## Development
 

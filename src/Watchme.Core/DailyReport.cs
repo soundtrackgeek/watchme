@@ -155,6 +155,13 @@ public static class DailyReport
         var paused = PauseState.Windows(db, from, to);
         if (paused.Count > 0)
             output.WriteLine($"Paused  {string.Join(", ", paused.Select(w => $"{Time(Math.Max(w.Start, from))}–{Time(Math.Min(w.End, to))}"))}   (nothing recorded)");
+        foreach (var group in Forgetting.Windows(db, from, to).GroupBy(w => w.Redact))
+        {
+            var label = group.Key ? "Redacted" : "Forgot";
+            var ranges = string.Join(", ", group.Select(w =>
+                $"{Time(Math.Max(w.Start, from))}–{Time(Math.Min(w.End, to))}{(w.Source is null ? "" : $" ({EventSources.DisplayName(w.Source)})")}"));
+            output.WriteLine($"{label,-7} {ranges}   (watchme forget)");
+        }
         output.WriteLine();
 
         output.WriteLine("Apps");

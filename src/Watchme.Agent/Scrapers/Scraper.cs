@@ -34,7 +34,8 @@ internal sealed class ScrapeContext(Database watchme, long now)
 
 /// <summary>
 /// Runs each scraper on its own interval and hands the results to the writer. Events that fall in
-/// a pause are dropped, and how each run went is kept in <c>meta</c> for <c>watchme status</c>.
+/// a pause or a forgotten stretch are dropped (or, in a redacted one, lose their text), and how
+/// each run went is kept in <c>meta</c> for <c>watchme status</c>.
 /// </summary>
 internal sealed class ScraperHost(IEnumerable<IScraper> scrapers, string watchmeDbPath, string pauseFile, Action<WatchEvent> emit)
 {
@@ -60,10 +61,12 @@ internal sealed class ScraperHost(IEnumerable<IScraper> scrapers, string watchme
                     health ??= ScraperHealth.FromJson(db.GetMeta(ScraperHealth.MetaPrefix + scraper.Name));
                     var now = Clock.NowMs();
                     var context = new ScrapeContext(db, now);
-                    var events = Run(scraper, context, db, now, out var dropped);
+                    var events = Run(scraper, context, db, now, out var dropped, out var forgotten, out var redacted);
                     health = ScraperHealth.After(health, scraper.Name, scraper.Interval, now, events.Count, context.Warning, null);
                     if (dropped > 0)
                         Log.Info($"{scraper.Name}: left out {dropped} events from a pause");
+                    if (forgotten > 0 || redacted > 0)
+                        Log.Info($"{scraper.Name}: left out {forgotten} and redacted {redacted} events in forgotten time");
                 }
                 catch (Exception ex)
                 {
@@ -81,7 +84,7 @@ internal sealed class ScraperHost(IEnumerable<IScraper> scrapers, string watchme
         {
         }
 
-        List<WatchEvent> Run(IScraper scraper, ScrapeContext context, Database db, long now, out int dropped)
+        List<WatchEvent> Run(IScraper scraper, ScrapeContext context, Database db, long now, out int dropped, out int forgotten, out int redacted)
         {
             var paused = PauseState.Windows(db);
             if (PauseState.Active(pauseFile, now) is { } p)
@@ -91,6 +94,7 @@ internal sealed class ScraperHost(IEnumerable<IScraper> scrapers, string watchme
                 .ToList();
             var events = paused.Count == 0 ? scraped : scraped.Where(e => !PauseState.Covers(paused, e.Ts)).ToList();
             dropped = scraped.Count - events.Count;
+            events = Forgetting.Filter(events, Forgetting.Windows(db), out forgotten, out redacted);
             if (sent.Count > 50_000)
                 sent.Clear();
             // Dropped ones count as handled too, so they aren't read and dropped again every run.

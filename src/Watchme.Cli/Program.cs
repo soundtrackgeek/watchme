@@ -14,6 +14,7 @@ try
         "status" => AgentControl.Status(),
         "pause" => PauseCommand.Pause(args.Skip(1).ToArray()),
         "resume" or "unpause" => PauseCommand.Resume(),
+        "forget" => ForgetCommand.Run(args.Skip(1).ToArray()),
         "install" => AgentControl.Install(),
         "uninstall" => AgentControl.Uninstall(),
         "start" => AgentControl.Start(),
@@ -71,6 +72,10 @@ static int Help(string? unknown = null)
           watchme pause [30m|2h|1h30m|14:30]            Record nothing for a while (default 30 minutes),
                                                         app history included; resumes by itself
           watchme resume                                End a pause early
+          watchme forget 15m|14:10..14:35 [--day DAY]   Remove what was recorded in a stretch of time,
+                                                        app history read later included
+          watchme forget --match WORDS [--days N]       Remove the events holding these words
+                                                        (--source S, --redact keeps them without text)
           watchme start                                 Start the background agent now
           watchme stop                                  Stop the background agent
           watchme install                               Start the agent at every Windows logon (and now),
