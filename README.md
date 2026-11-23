@@ -276,7 +276,8 @@ watchme start
 ## Usage
 
 ```text
-watchme report [today|yesterday|YYYY-MM-DD]   Summary of a day (default: today)
+watchme report [DAY|RANGE]                    Summary of a day (default: today) or several days
+watchme search WORDS... [options]             Find events in the whole history
 watchme status                                Is the agent running, and what has it recorded?
 watchme start | stop                          Start or stop the background agent
 watchme install | uninstall                   Start at every logon and add to PATH (or undo both)
@@ -311,6 +312,48 @@ Activity in apps
 
 Apps under 30 seconds are summed into an `other` line, and timeline blocks under a minute into a
 `shorter visits` line, so short use is still counted.
+
+## Several days at once
+
+`watchme report` also takes a range and prints one summary for it:
+
+```powershell
+watchme report 7d                       # the last 7 days, today included (any Nd up to 366d)
+watchme report week                     # Monday to today; last-week is the whole week before
+watchme report month                    # the 1st to today; last-month is the month before
+watchme report 2026-11-01..2026-11-15   # any range; 2026-11-01.. runs to today
+```
+
+It shows the focus time and how it was spread (per day, or per week for ranges over 31 days),
+the top apps with their most-used window, and a line or two per app that logged anything:
+tracks, artists and genres; pages and sites; commits per repo and agent time per project;
+PowerShell programs; Total Commander operations and library changes; downloads. The numbers
+are the same ones the dashboard shows for that range.
+
+## Search
+
+```powershell
+watchme search rateyourmusic tiesto        # every word must match somewhere
+watchme search "rate your music"           # quotes keep a phrase together
+watchme search dotnet --source pwsh --days 7
+watchme search watchme --from 2026-11-01 --to 2026-11-15 --limit 200
+```
+
+Searches the whole history, newest first: window titles, apps, kinds and each event's data
+(URLs, commands and their folders, artists and albums, agent prompts and projects). When the
+match is not in the title, the field that matched is printed under it (`url: …`, `cmd: …`), and
+matches are highlighted in the terminal (set `NO_COLOR` to turn that off). Process start and
+exit are left out unless you ask for them with `--source process`.
+
+| Option | Meaning |
+| --- | --- |
+| `--source S` | One source: `edge`, `powershell` (`pwsh`), `git`, `t3`, `aurora`, `aurora_ng`, `musiclibrary`, `totalcmd` (`tc`), `flipside`, `forever`, `focus`, … |
+| `--days N` | The last N days, today included |
+| `--from DAY`, `--to DAY` | A date, `today` or `yesterday` |
+| `--limit N` | How many to print (default 50, at most 1000); the total is always shown |
+
+Matching ignores case for English letters only, as SQLite's `LIKE` does: `tiësto` finds
+`Tiësto`, but `TIËSTO` does not.
 
 ## Dashboard
 

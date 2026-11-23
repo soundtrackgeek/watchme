@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.19.0] - 2026-11-23
+
+### Added
+
+- `watchme search WORDS...`: finds events in the whole history by title, app, kind and data
+  (URLs, commands, folders, artists, prompts), newest first and grouped by day. Shows the data
+  field that matched when the title does not, highlights matches, and takes `--source`,
+  `--days`, `--from`, `--to` and `--limit`.
+- `watchme report` takes ranges: `7d` (any number of days), `week`, `last-week`, `month`,
+  `last-month` and `FROM..TO`. A range prints focus time per day (per week past 31 days), the top
+  apps, and highlights per app, with the same numbers as the dashboard.
+
 ## [0.18.0] - 2026-11-23
 
 ### Added

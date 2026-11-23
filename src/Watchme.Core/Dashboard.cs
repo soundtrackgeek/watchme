@@ -239,8 +239,7 @@ public static class Dashboard
         if (!string.IsNullOrWhiteSpace(query))
         {
             where.Add("(title LIKE $q ESCAPE '\\' OR app LIKE $q ESCAPE '\\' OR kind LIKE $q ESCAPE '\\' OR data LIKE $q ESCAPE '\\')");
-            var escaped = query.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
-            cmd.Parameters.AddWithValue("$q", $"%{escaped}%");
+            cmd.Parameters.AddWithValue("$q", EventSearch.ContainsPattern(query));
         }
         if (!string.IsNullOrWhiteSpace(app))
         {

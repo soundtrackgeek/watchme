@@ -958,7 +958,7 @@ public static class DailyReport
 
     private static string? Str(JsonObject? obj, string key) => obj?[key] is JsonValue v ? v.ToString() : null;
 
-    private static string Bar(long ms, long top) => new('█', (int)Math.Max(1, Math.Round(24.0 * ms / top)));
+    internal static string Bar(long ms, long top) => new('█', (int)Math.Max(1, Math.Round(24.0 * ms / top)));
 
     private static List<(long Ts, string App)> LoadLaunches(Database db, long fromMs, long toMs, HashSet<string> usedApps)
     {
@@ -1001,5 +1001,5 @@ public static class DailyReport
         return t.TotalHours >= 1 ? $"{(int)t.TotalHours}h {t.Minutes:00}m" : $"{t.Minutes}m {t.Seconds:00}s";
     }
 
-    private static string Trim(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
+    internal static string Trim(string s, int max) => s.Length <= max ? s : s[..(max - 1)] + "…";
 }

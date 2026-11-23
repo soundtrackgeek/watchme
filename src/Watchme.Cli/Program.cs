@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text;
 using Watchme.Cli;
 using Watchme.Core;
@@ -11,6 +10,7 @@ try
     return command switch
     {
         "report" or "today" => Report(args.Skip(1).FirstOrDefault()),
+        "search" or "find" => SearchCommand.Run(args.Skip(1).ToArray()),
         "status" => AgentControl.Status(),
         "install" => AgentControl.Install(),
         "uninstall" => AgentControl.Uninstall(),
@@ -29,17 +29,12 @@ catch (Exception ex)
     return 1;
 }
 
-static int Report(string? dateArg)
+static int Report(string? rangeArg)
 {
     var today = DateOnly.FromDateTime(DateTime.Now);
-    DateOnly day;
-    if (dateArg is null or "today")
-        day = today;
-    else if (dateArg == "yesterday")
-        day = today.AddDays(-1);
-    else if (!DateOnly.TryParseExact(dateArg, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out day))
+    if (!ReportRange.TryParse(rangeArg, today, out var from, out var to))
     {
-        Console.Error.WriteLine($"Expected a date like 2026-11-22, 'today' or 'yesterday', got '{dateArg}'.");
+        Console.Error.WriteLine($"Expected a day or range ({ReportRange.Forms}), got '{rangeArg}'.");
         return 2;
     }
 
@@ -50,7 +45,10 @@ static int Report(string? dateArg)
     }
 
     using var db = Database.Open(Paths.Database);
-    DailyReport.Print(db, day, Console.Out);
+    if (from == to)
+        DailyReport.Print(db, from, Console.Out);
+    else
+        RangeReport.Print(db, from, to, Console.Out);
     return 0;
 }
 
@@ -62,7 +60,11 @@ static int Help(string? unknown = null)
         watchme — what did I actually do on this computer?
 
         Usage:
-          watchme report [today|yesterday|YYYY-MM-DD]   Summary of a day (default: today)
+          watchme report [DAY|RANGE]                    Summary of a day (default: today) or of a range:
+                                                        7d, week, last-week, month, last-month, FROM..TO
+          watchme search WORDS... [options]             Find events in the whole history (titles, URLs,
+                                                        commands, folders, artists, prompts)
+                                                        --source S  --days N  --from D  --to D  --limit N
           watchme status                                Is the agent running, and what has it recorded?
           watchme start                                 Start the background agent now
           watchme stop                                  Stop the background agent
