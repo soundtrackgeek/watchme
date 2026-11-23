@@ -4,6 +4,17 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.14.0] - 2026-11-23
+
+### Added
+
+- Web dashboard: `watchme dashboard [--port N] [--no-open]` serves charts and tables of the
+  recorded data on `http://127.0.0.1:7317` and opens them in the browser: totals, focus time per
+  day by app, an hour-of-day grid, a day timeline with the report's activity lines, an apps
+  table, events per source, music, web, code, PowerShell and file summaries, and a searchable
+  event log. The page is embedded in `watchme.exe` and loads nothing from the internet; requests
+  not addressed to the loopback host are refused.
+
 ## [0.13.0] - 2026-11-22
 
 ### Added

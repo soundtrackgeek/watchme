@@ -233,6 +233,7 @@ watchme status                                Is the agent running, and what has
 watchme start | stop                          Start or stop the background agent
 watchme install | uninstall                   Start at every logon and add to PATH (or undo both)
 watchme powershell install|uninstall|status   Log the commands you run in PowerShell 7
+watchme dashboard [--port N] [--no-open]      Charts and tables in your browser
 ```
 
 Example report:
@@ -261,6 +262,36 @@ Activity in apps
 
 Apps under 30 seconds are summed into an `other` line, and timeline blocks under a minute into a
 `shorter visits` line, so short use is still counted.
+
+## Dashboard
+
+```powershell
+watchme dashboard
+```
+
+This starts a small web server on <http://127.0.0.1:7317> (the next free port if that one is taken)
+and opens it in your browser. Press Ctrl+C to stop it. `--port N` picks the port and `--no-open`
+leaves the browser alone. It reads the same database as the report, so it works whether or not
+the agent is running.
+
+For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you pick), it shows:
+
+- **Totals:** focus time, songs, pages, agent prompts, commits, commands, ratings, albums added.
+- **Focus time per day**, stacked by app (the top 7, the rest as *Other*), with a table view.
+- **When:** an hour-of-day grid of focus minutes or app events.
+- **Day timeline:** one day's blocks of work by app, idle stretches, and the report's *Activity
+  in apps* lines.
+- **Apps:** time, share, blocks and most-used window per app.
+- **Activity in apps:** events per day (or per hour, for a single day), one small chart per source.
+- **Music, Web, Code, PowerShell, Files:** top artists, albums, genres and ratings given; sites by
+  pages and your searches; commits per repo, agent time per project and model; programs and
+  folders; Total Commander operations and library changes.
+- **Event log:** the raw events, filterable by source and searchable, newest first.
+
+The page is built into `watchme.exe` and loads nothing from the internet. The server only listens
+on the loopback address and only answers requests addressed to `127.0.0.1` or `localhost`, so a
+web page can't read your data through a DNS rebinding trick. The range is kept in the address
+(`#from=…&to=…`), so a view can be bookmarked. The theme follows Windows; the ◐ button switches it.
 
 ## Querying the data yourself
 
@@ -323,5 +354,6 @@ dotnet build
 dotnet test
 ```
 
-Projects: `Watchme.Core` (schema, config, report), `Watchme.Agent` (the windowless collector),
-`Watchme.Cli` (`watchme.exe`), `Watchme.Tests`.
+Projects: `Watchme.Core` (schema, config, report, dashboard data), `Watchme.Agent` (the windowless
+collector), `Watchme.Cli` (`watchme.exe`, and the dashboard's server and page in `dashboard.html`),
+`Watchme.Tests`.

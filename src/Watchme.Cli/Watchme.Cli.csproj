@@ -6,6 +6,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Kestrel for `watchme dashboard`; part of the shared framework, no package needed. -->
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="dashboard.html" LogicalName="Watchme.Cli.dashboard.html" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Watchme.Core\Watchme.Core.csproj" />
     <ProjectReference Include="..\Watchme.Agent\Watchme.Agent.csproj" />
   </ItemGroup>

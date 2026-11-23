@@ -16,6 +16,7 @@ try
         "uninstall" => AgentControl.Uninstall(),
         "start" => AgentControl.Start(),
         "stop" => AgentControl.Stop(),
+        "dashboard" or "web" => DashboardServer.Run(args.Skip(1).ToArray()),
         "powershell" or "pwsh" => PowerShellCommand.Run(args.Skip(1).FirstOrDefault()),
         "help" or "-h" or "--help" or "/?" => Help(),
         _ => Help(unknown: command),
@@ -68,6 +69,8 @@ static int Help(string? unknown = null)
                                                         and add watchme to your user PATH
           watchme uninstall                             Undo install and stop the agent (data is kept)
           watchme powershell install|uninstall|status   Log the commands you run in PowerShell 7
+          watchme dashboard [--port N] [--no-open]      Charts and tables in your browser
+                                                        (http://127.0.0.1:7317, Ctrl+C to stop)
 
         Data:   %LOCALAPPDATA%\Watchme\watchme.db (override with WATCHME_HOME)
         Config: %LOCALAPPDATA%\Watchme\config.json

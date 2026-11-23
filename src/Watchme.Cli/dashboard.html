@@ -1,0 +1,829 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Watchme Dashboard</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --text: #0b0b0b; --text-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --wash: rgba(11,11,11,0.05);
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s5: #e87ba4; --s6: #008300; --s7: #6250d6;
+  --other: #b5b3ad; --idle: #e1e0d9; --critical: #d03b3b; --good: #006300;
+  --ramp: #cde2fb,#b7d3f6,#9ec5f4,#86b6ef,#6da7ec,#5598e7,#3987e5,#2a78d6,#256abf,#1c5cab,#184f95,#104281,#0d366b;
+  --empty: #f0efec;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --text: #f0efec; --text-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.06);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #0ca30c; --s7: #9085e9;
+    --other: #5c5b57; --idle: #2c2c2a; --critical: #e66767; --good: #0ca30c;
+    --ramp: #0d366b,#104281,#184f95,#1c5cab,#256abf,#2a78d6,#3987e5,#5598e7,#6da7ec,#86b6ef,#9ec5f4,#b7d3f6,#cde2fb;
+    --empty: #232321;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --text: #f0efec; --text-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10); --wash: rgba(255,255,255,0.06);
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s5: #d55181; --s6: #0ca30c; --s7: #9085e9;
+  --other: #5c5b57; --idle: #2c2c2a; --critical: #e66767; --good: #0ca30c;
+  --ramp: #0d366b,#104281,#184f95,#1c5cab,#256abf,#2a78d6,#3987e5,#5598e7,#6da7ec,#86b6ef,#9ec5f4,#b7d3f6,#cde2fb;
+  --empty: #232321;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--page); color: var(--text);
+  font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1320px; margin: 0 auto; padding: 20px 16px 48px; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-bottom: 16px; }
+h1 { font-size: 20px; margin: 0; font-weight: 650; letter-spacing: -0.01em; }
+h1 small { font-weight: 400; color: var(--text-2); font-size: 14px; margin-left: 8px; }
+h2 { font-size: 15px; font-weight: 600; margin: 0; }
+h3 { font-size: 13px; font-weight: 600; margin: 16px 0 8px; color: var(--text-2); }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.seg button { border: 0; background: none; color: var(--text-2); padding: 6px 11px; font: inherit; cursor: pointer; }
+.seg button + button { border-left: 1px solid var(--border); }
+.seg button:hover { background: var(--wash); }
+.seg button[aria-pressed="true"] { color: var(--text); font-weight: 600; background: var(--wash); }
+input[type=date], select, input[type=search] {
+  font: inherit; color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 5px 8px;
+}
+.spacer { flex: 1; }
+.iconbtn { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer; }
+.iconbtn:hover { color: var(--text); }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
+.card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 12px; }
+.card-head .sub { color: var(--text-2); font-size: 13px; }
+.card-head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.grid { display: grid; gap: 16px; margin-bottom: 16px; }
+.g2 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr)); }
+.g3 { grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); }
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(124px, 1fr)); margin-bottom: 16px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; }
+.tile .label { color: var(--text-2); font-size: 13px; }
+.tile .value { font-size: 24px; font-weight: 600; margin-top: 2px; }
+.tile .note { color: var(--muted); font-size: 12px; }
+.tile.hero { grid-column: span 2; }
+.tile.hero .value { font-size: 48px; line-height: 1.1; letter-spacing: -0.02em; }
+svg { display: block; overflow: visible; }
+svg text { fill: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 14px; margin-top: 10px; font-size: 12px; color: var(--text-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.bars { display: grid; grid-template-columns: minmax(80px, max-content) 1fr auto; gap: 6px 10px; align-items: center; font-size: 13px; }
+.bars .name { color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.bars .track { height: 12px; position: relative; }
+.bars .fill { height: 12px; background: var(--s1); border-radius: 0 4px 4px 0; min-width: 2px; }
+.bars .val { color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+.bars .row { display: contents; }
+.bars .row:hover .fill { filter: brightness(1.15); }
+.empty { color: var(--muted); font-size: 13px; padding: 12px 0; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; font-weight: 600; color: var(--text-2); border-bottom: 1px solid var(--axis); padding: 6px 8px; white-space: nowrap; }
+td { border-bottom: 1px solid var(--grid); padding: 6px 8px; vertical-align: top; }
+#apps td:first-child { white-space: nowrap; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.title { color: var(--text-2); max-width: 520px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+td.time { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--text-2); }
+.share { display: inline-block; height: 8px; border-radius: 4px; background: var(--s1); vertical-align: middle; margin-right: 6px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.scroll { overflow-x: auto; }
+details { margin-top: 10px; }
+summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
+.activity { font: 12px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; color: var(--text-2); max-height: 360px; overflow: auto; margin: 12px 0 0; padding: 10px 12px; background: var(--page); border-radius: 8px; border: 1px solid var(--border); }
+.multiples { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+.multiples .m-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
+.multiples .m-head b { font-weight: 600; }
+.multiples .m-head span { color: var(--text-2); font-variant-numeric: tabular-nums; }
+.searches { list-style: none; padding: 0; margin: 0; font-size: 13px; max-height: 300px; overflow: auto; }
+.searches li { padding: 4px 0; border-bottom: 1px solid var(--grid); display: flex; gap: 8px; }
+.searches .when { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.searches .site { color: var(--text-2); white-space: nowrap; }
+.stats { display: flex; flex-wrap: wrap; gap: 4px 18px; font-size: 13px; color: var(--text-2); margin-bottom: 8px; }
+.stats b { color: var(--text); font-weight: 600; }
+.status-bad { color: var(--critical); }
+.status-bad::before { content: "✕ "; }
+.log-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.more { margin-top: 10px; }
+#tooltip {
+  position: fixed; pointer-events: none; z-index: 10; display: none; max-width: 360px;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: 8px;
+  padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);
+}
+#tooltip .tt-head { color: var(--text-2); margin-bottom: 4px; }
+#tooltip .tt-row { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+#tooltip .tt-row b { font-weight: 600; font-variant-numeric: tabular-nums; min-width: 52px; }
+#tooltip .tt-row span { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; }
+#tooltip .key { width: 10px; height: 2px; border-radius: 1px; flex: none; }
+#tooltip .tt-note { color: var(--text-2); margin-top: 4px; white-space: normal; }
+.loading .card, .loading .tile { opacity: 0.55; transition: opacity 0.15s; }
+.error { color: var(--critical); padding: 12px; }
+@media (max-width: 640px) { .tile.hero { grid-column: span 1; } .tile.hero .value { font-size: 36px; } }
+</style>
+</head>
+<body>
+<main id="app">
+  <header>
+    <h1>Watchme <small id="range-label"></small></h1>
+    <div class="filters">
+      <div class="seg" id="presets" role="group" aria-label="Date range">
+        <button data-preset="today">Today</button>
+        <button data-preset="yesterday">Yesterday</button>
+        <button data-preset="7">7 days</button>
+        <button data-preset="30">30 days</button>
+        <button data-preset="90">90 days</button>
+      </div>
+      <input type="date" id="from" aria-label="From">
+      <span style="color:var(--muted)">–</span>
+      <input type="date" id="to" aria-label="To">
+    </div>
+    <div class="spacer"></div>
+    <button class="iconbtn" id="theme" title="Switch light and dark">◐ Theme</button>
+  </header>
+
+  <div id="error"></div>
+  <section class="tiles" id="tiles"></section>
+
+  <div class="grid g2">
+    <section class="card">
+      <div class="card-head"><h2>Focus time per day</h2><span class="sub">by app, top 7</span></div>
+      <div id="per-day"></div>
+      <div class="legend" id="per-day-legend"></div>
+      <details><summary>Table</summary><div class="scroll" id="per-day-table"></div></details>
+    </section>
+    <section class="card">
+      <div class="card-head">
+        <h2>When</h2><span class="sub" id="heat-sub">by hour of day</span>
+        <div class="right seg" id="heat-mode" role="group" aria-label="Heatmap measure">
+          <button data-mode="focus" aria-pressed="true">Focus time</button>
+          <button data-mode="events">App events</button>
+        </div>
+      </div>
+      <div id="heatmap"></div>
+      <div class="legend" id="heat-legend"></div>
+    </section>
+  </div>
+
+  <section class="card" style="margin-bottom:16px">
+    <div class="card-head">
+      <h2>Day timeline</h2><span class="sub" id="day-sub"></span>
+      <div class="right"><select id="day-pick" aria-label="Day"></select></div>
+    </div>
+    <div id="timeline"></div>
+    <div class="legend" id="timeline-legend"></div>
+    <details open><summary>Activity in apps</summary><div class="activity" id="activity"></div></details>
+  </section>
+
+  <div class="grid g2">
+    <section class="card">
+      <div class="card-head"><h2>Apps</h2><span class="sub">focus time in range</span></div>
+      <div class="scroll" id="apps"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Activity in apps</h2><span class="sub" id="multiples-sub">events per day</span></div>
+      <div class="multiples" id="multiples"></div>
+    </section>
+  </div>
+
+  <div class="grid g3">
+    <section class="card">
+      <div class="card-head"><h2>Music</h2><span class="sub">Aurora and Aurora NG</span></div>
+      <div class="stats" id="music-stats"></div>
+      <h3>Artists by time listened</h3><div id="music-artists"></div>
+      <h3>Albums</h3><div id="music-albums"></div>
+      <h3>Genres</h3><div id="music-genres"></div>
+      <h3>Ratings given</h3><div id="music-stars"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Web</h2><span class="sub">Edge history</span></div>
+      <div class="stats" id="web-stats"></div>
+      <h3>Sites by pages opened</h3><div id="web-sites"></div>
+      <h3>Searches</h3><ul class="searches" id="web-searches"></ul>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Code</h2><span class="sub">git and T3 Code</span></div>
+      <div class="stats" id="code-stats"></div>
+      <h3>Commits per repo</h3><div id="code-repos"></div>
+      <h3>Agent time per project</h3><div id="code-projects"></div>
+      <h3>Models</h3><div class="scroll" id="code-models"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>PowerShell</h2><span class="sub">commands you ran</span></div>
+      <div class="stats" id="shell-stats"></div>
+      <h3>Programs</h3><div id="shell-programs"></div>
+      <h3>Folders</h3><div id="shell-folders"></div>
+    </section>
+    <section class="card">
+      <div class="card-head"><h2>Files and library</h2><span class="sub">Total Commander and Music Library</span></div>
+      <div class="stats" id="files-stats"></div>
+      <h3>Total Commander items</h3><div id="files-ops"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>Event log</h2><span class="sub">raw events, newest first</span>
+      <div class="right log-controls">
+        <select id="log-source" aria-label="Source"></select>
+        <input type="search" id="log-q" placeholder="Search titles" aria-label="Search">
+      </div>
+    </div>
+    <div class="scroll"><table id="log"><thead><tr><th>Time</th><th>Source</th><th>Kind</th><th>App</th><th>Title</th></tr></thead><tbody></tbody></table></div>
+    <button class="iconbtn more" id="log-more" hidden>Load more</button>
+  </section>
+</main>
+<div id="tooltip" role="tooltip"></div>
+
+<script>
+"use strict";
+const $ = (s) => document.querySelector(s);
+const SVGNS = "http://www.w3.org/2000/svg";
+const SOURCE_NAMES = {
+  aurora: "Aurora", aurora_ng: "Aurora NG", musiclibrary: "Music Library", totalcmd: "Total Commander",
+  t3: "T3 Code", git: "Git", powershell: "PowerShell", edge: "Edge", focus: "Focus", idle: "Idle",
+  session: "Session", process: "Process", agent: "Agent",
+};
+const sourceName = (s) => SOURCE_NAMES[s] || s;
+
+// ---------- formatting ----------
+function dur(ms) {
+  const s = Math.round(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60), h = Math.floor(m / 60);
+  if (h === 0) return `${m}m`;
+  return `${h}h ${String(m % 60).padStart(2, "0")}m`;
+}
+const num = (n) => Math.round(n).toLocaleString();
+function compact(n) {
+  if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, "") + "M";
+  if (n >= 1e4) return Math.round(n / 1e3) + "K";
+  if (n >= 1e3) return (n / 1e3).toFixed(1).replace(/\.0$/, "") + "K";
+  return num(n);
+}
+const pad = (n) => String(n).padStart(2, "0");
+const isoDay = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const parseDay = (s) => { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d); };
+const addDays = (s, n) => { const d = parseDay(s); d.setDate(d.getDate() + n); return isoDay(d); };
+const dayLabel = (s, opts = { weekday: "short", day: "numeric", month: "short" }) => parseDay(s).toLocaleDateString(undefined, opts);
+const clock = (ms) => { const d = new Date(ms); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+function el(tag, attrs = {}, ...children) {
+  const node = tag.startsWith("svg:") ? document.createElementNS(SVGNS, tag.slice(4)) : document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null) continue;
+    if (k === "text") node.textContent = v;
+    else if (k === "style" && typeof v === "object") Object.assign(node.style, v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of children) if (c != null) node.append(c);
+  return node;
+}
+const svg = (tag, attrs, ...c) => el("svg:" + tag, attrs, ...c);
+
+// ---------- tooltip ----------
+const tip = $("#tooltip");
+function showTip(evt, head, rows, note) {
+  tip.replaceChildren();
+  if (head) tip.append(el("div", { class: "tt-head", text: head }));
+  for (const r of rows) {
+    const row = el("div", { class: "tt-row" });
+    if (r.color) row.append(el("i", { class: "key", style: { background: r.color } }));
+    row.append(el("b", { text: r.value }), el("span", { text: r.label }));
+    tip.append(row);
+  }
+  if (note) tip.append(el("div", { class: "tt-note", text: note }));
+  tip.style.display = "block";
+  moveTip(evt);
+}
+function moveTip(evt) {
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  if (x + w > innerWidth - 8) x = evt.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = evt.clientY - h - pad;
+  tip.style.left = Math.max(8, x) + "px";
+  tip.style.top = Math.max(8, y) + "px";
+}
+const hideTip = () => { tip.style.display = "none"; };
+function hover(node, fn) {
+  node.addEventListener("pointerenter", (e) => fn(e));
+  node.addEventListener("pointermove", moveTip);
+  node.addEventListener("pointerleave", hideTip);
+  node.setAttribute("tabindex", "0");
+  node.addEventListener("focus", () => {
+    const r = node.getBoundingClientRect();
+    fn({ clientX: r.left + r.width / 2, clientY: r.top });
+  });
+  node.addEventListener("blur", hideTip);
+}
+
+// ---------- app colours: follow the app, never its rank ----------
+const SLOTS = 7;
+const appSlot = new Map();
+function assignColors(apps) {
+  const wanted = new Set(apps);
+  const used = new Set();
+  for (const a of apps) if (appSlot.has(a)) used.add(appSlot.get(a));
+  for (const a of apps) {
+    if (appSlot.has(a)) continue;
+    let slot = 0;
+    while (slot < SLOTS && used.has(slot)) slot++;
+    if (slot >= SLOTS) continue;
+    // Free the slot from an app no longer on screen.
+    for (const [other, s] of appSlot) if (s === slot && !wanted.has(other)) appSlot.delete(other);
+    appSlot.set(a, slot);
+    used.add(slot);
+  }
+}
+const appColor = (app) => appSlot.has(app) ? css(`--s${appSlot.get(app) + 1}`) : css("--other");
+const appName = (app) => app.replace(/\.exe$/i, "");
+
+// ---------- state ----------
+const state = { from: null, to: null, data: null, dayData: null, heat: "focus", day: null, log: { rows: [], done: false } };
+
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  const today = isoDay(new Date());
+  state.to = p.get("to") || today;
+  state.from = p.get("from") || addDays(state.to, -6);
+  state.day = p.get("day");
+}
+function writeHash() {
+  const p = new URLSearchParams({ from: state.from, to: state.to });
+  if (state.day) p.set("day", state.day);
+  history.replaceState(null, "", "#" + p);
+}
+
+function setPreset(preset) {
+  const today = isoDay(new Date());
+  if (preset === "today") { state.from = state.to = today; }
+  else if (preset === "yesterday") { state.from = state.to = addDays(today, -1); }
+  else { state.to = today; state.from = addDays(today, -(Number(preset) - 1)); }
+  state.day = null;
+  load();
+}
+
+function markPreset() {
+  const today = isoDay(new Date());
+  const span = Math.round((parseDay(state.to) - parseDay(state.from)) / 864e5) + 1;
+  let active = null;
+  if (state.to === today && state.from === today) active = "today";
+  else if (state.from === state.to && state.to === addDays(today, -1)) active = "yesterday";
+  else if (state.to === today && [7, 30, 90].includes(span)) active = String(span);
+  for (const b of document.querySelectorAll("#presets button")) b.setAttribute("aria-pressed", String(b.dataset.preset === active));
+  $("#from").value = state.from;
+  $("#to").value = state.to;
+  $("#range-label").textContent = state.from === state.to
+    ? dayLabel(state.from, { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : `${dayLabel(state.from, { day: "numeric", month: "short" })} – ${dayLabel(state.to, { day: "numeric", month: "short", year: "numeric" })}`;
+}
+
+async function getJson(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json();
+}
+
+async function load() {
+  markPreset();
+  writeHash();
+  document.body.classList.add("loading");
+  $("#error").replaceChildren();
+  try {
+    const data = await getJson(`/api/range?from=${state.from}&to=${state.to}`);
+    state.data = data;
+    assignColors(data.apps.slice(0, SLOTS).map((a) => a.app));
+    renderAll();
+    const days = data.days.map((d) => d.date);
+    if (!state.day || !days.includes(state.day)) {
+      const withData = data.days.filter((d) => d.activeMs > 0 || Object.keys(d.events).length > 0);
+      state.day = (withData.length ? withData[withData.length - 1] : data.days[data.days.length - 1]).date;
+    }
+    fillDayPicker(days);
+    await loadDay();
+    resetLog();
+  } catch (err) {
+    $("#error").replaceChildren(el("div", { class: "card error", text: `Could not load data: ${err.message}` }));
+  } finally {
+    document.body.classList.remove("loading");
+  }
+}
+
+function renderAll() {
+  const d = state.data;
+  renderTiles(d);
+  renderPerDay(d);
+  renderHeatmap(d);
+  renderApps(d);
+  renderMultiples(d);
+  renderMusic(d.music, d.totals);
+  renderWeb(d.web);
+  renderCode(d.code, d.totals);
+  renderShell(d.shell);
+  renderFiles(d);
+  fillLogSources(d.sources);
+}
+
+// ---------- tiles ----------
+function renderTiles(d) {
+  const t = d.totals, n = d.days.length;
+  const active = d.days.filter((x) => x.activeMs > 0).length;
+  const tiles = [
+    { hero: true, label: "Focus time", value: t.activeMs ? dur(t.activeMs) : "—",
+      note: n > 1 && active ? `${dur(t.activeMs / active)} a day on ${active} of ${n} days` : `${t.appsUsed} apps` },
+    { label: "Songs played", value: compact(t.listens), note: t.listenedS ? `${dur(t.listenedS * 1000)} listened` : null },
+    { label: "Pages opened", value: compact(t.pages), note: "in Edge" },
+    { label: "Agent prompts", value: compact(t.prompts), note: t.agentS ? `${dur(t.agentS * 1000)} of agent work` : null },
+    { label: "Commits", value: compact(t.commits), note: t.pushes ? `${num(t.pushes)} pushes` : null },
+    { label: "Commands", value: compact(t.commands), note: t.failedCommands ? `${num(t.failedCommands)} failed` : "in PowerShell" },
+    { label: "Ratings", value: compact(t.ratings), note: "albums and tracks" },
+    { label: "Albums added", value: compact(t.albumsAdded), note: t.albumsRemoved ? `${num(t.albumsRemoved)} removed` : null },
+  ];
+  $("#tiles").replaceChildren(...tiles.map((x) => el("div", { class: "tile" + (x.hero ? " hero" : "") },
+    el("div", { class: "label", text: x.label }),
+    el("div", { class: "value", text: x.value }),
+    x.note ? el("div", { class: "note", text: x.note }) : null)));
+}
+
+// ---------- shared chart helpers ----------
+function niceStep(max, target = 4) {
+  const raw = max / target;
+  const pow = Math.pow(10, Math.floor(Math.log10(raw || 1)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (raw <= m * pow) return m * pow;
+  return 10 * pow;
+}
+// Hours on an axis read better in clean time steps.
+function timeStep(maxMs) {
+  const steps = [5, 10, 15, 30, 60, 120, 180, 240, 360].map((m) => m * 60000);
+  return steps.find((s) => maxMs / s <= 5) || 480 * 60000;
+}
+function axisTime(ms) { const m = Math.round(ms / 60000); return m % 60 === 0 ? `${m / 60}h` : m < 60 ? `${m}m` : `${Math.floor(m / 60)}h${pad(m % 60)}`; }
+
+// A column whose top corners are rounded and whose base is square.
+function topRounded(x, y, w, h, r) {
+  r = Math.min(r, h, w / 2);
+  return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+}
+
+function width(node) { return Math.max(260, node.clientWidth || node.parentElement.clientWidth || 600); }
+
+// ---------- focus per day (stacked columns) ----------
+function renderPerDay(d) {
+  const host = $("#per-day");
+  const keys = d.apps.slice(0, 7).map((a) => a.app);
+  if (d.days.some((x) => x.apps.Other)) keys.push("Other");
+  const maxMs = Math.max(0, ...d.days.map((x) => x.activeMs));
+  host.replaceChildren();
+  if (maxMs === 0) {
+    host.append(el("div", { class: "empty", text: "No focus time recorded in this range. The agent records it while it runs." }));
+    $("#per-day-legend").replaceChildren();
+    $("#per-day-table").replaceChildren();
+    return;
+  }
+  const W = width(host), H = 220, m = { l: 44, r: 8, t: 8, b: 26 };
+  const iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const step = timeStep(maxMs);
+  const top = Math.ceil(maxMs / step) * step;
+  const y = (v) => m.t + ih - (v / top) * ih;
+  const band = iw / d.days.length;
+  const bw = Math.min(24, Math.max(3, band * 0.6));
+  const root = svg("svg", { width: W, height: H, role: "img", "aria-label": "Focus time per day by app" });
+  for (let v = 0; v <= top + 1; v += step) {
+    root.append(svg("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: v === 0 ? css("--axis") : css("--grid"), "stroke-width": 1 }));
+    root.append(svg("text", { x: m.l - 6, y: y(v) + 4, "text-anchor": "end", text: axisTime(v) }));
+  }
+  const labelW = d.days.length > 14 ? 40 : 52;
+  const every = Math.ceil(d.days.length / Math.max(1, Math.floor(iw / labelW)));
+  d.days.forEach((day, i) => {
+    const cx = m.l + band * i + band / 2;
+    if (i % every === 0)
+      root.append(svg("text", { x: cx, y: H - 8, "text-anchor": "middle",
+        text: d.days.length > 14 ? dayLabel(day.date, { day: "numeric", month: "numeric" }) : dayLabel(day.date, { weekday: "short", day: "numeric" }) }));
+    const segs = keys.filter((k) => day.apps[k] > 0).map((k) => ({ k, v: day.apps[k] }));
+    let acc = 0;
+    segs.forEach((s, j) => {
+      const y0 = y(acc), y1 = y(acc + s.v);
+      acc += s.v;
+      const isTop = j === segs.length - 1;
+      const h = Math.max(0, y0 - y1 - (j > 0 ? 2 : 0)); // 2px surface gap between segments
+      if (h <= 0) return;
+      const shape = isTop
+        ? svg("path", { d: topRounded(cx - bw / 2, y1, bw, h, 4) })
+        : svg("rect", { x: cx - bw / 2, y: y1, width: bw, height: h });
+      shape.setAttribute("fill", s.k === "Other" ? css("--other") : appColor(s.k));
+      root.append(shape);
+    });
+    const hit = svg("rect", { x: m.l + band * i, y: m.t, width: band, height: ih, fill: "transparent" });
+    hover(hit, (e) => showTip(e, `${dayLabel(day.date)} · ${dur(day.activeMs)}`,
+      segs.slice().reverse().map((s) => ({ value: dur(s.v), label: s.k === "Other" ? "Other" : appName(s.k), color: s.k === "Other" ? css("--other") : appColor(s.k) }))));
+    root.append(hit);
+  });
+  host.append(root);
+
+  $("#per-day-legend").replaceChildren(...keys.map((k) =>
+    el("span", {}, el("i", { style: { background: k === "Other" ? css("--other") : appColor(k) } }), appName(k))));
+
+  const table = el("table", {},
+    el("thead", {}, el("tr", {}, el("th", { text: "Day" }), ...keys.map((k) => el("th", { class: "num", text: appName(k) })), el("th", { class: "num", text: "Total" }))),
+    el("tbody", {}, ...d.days.map((day) => el("tr", {},
+      el("td", { text: dayLabel(day.date) }),
+      ...keys.map((k) => el("td", { class: "num", text: day.apps[k] ? dur(day.apps[k]) : "" })),
+      el("td", { class: "num", text: day.activeMs ? dur(day.activeMs) : "" })))));
+  $("#per-day-table").replaceChildren(table);
+}
+
+// ---------- hour-of-day heatmap ----------
+function renderHeatmap(d) {
+  const host = $("#heatmap");
+  const focus = state.heat === "focus";
+  const grid = focus ? d.focusByHour : d.eventsByHour;
+  const max = Math.max(0, ...grid.flat());
+  $("#heat-sub").textContent = focus ? "minutes of focus per hour" : "app events per hour";
+  host.replaceChildren();
+  if (max === 0) {
+    host.append(el("div", { class: "empty", text: focus ? "No focus time in this range." : "No app events in this range." }));
+    $("#heat-legend").replaceChildren();
+    return;
+  }
+  const ramp = css("--ramp").split(",").map((s) => s.trim());
+  const color = (v) => v <= 0 ? css("--empty") : ramp[Math.min(ramp.length - 1, Math.floor((v / max) * (ramp.length - 1) + 0.5))];
+  const W = width(host), m = { l: 64, r: 4, t: 18, b: 4 };
+  const cw = (W - m.l - m.r) / 24;
+  const ch = Math.max(10, Math.min(22, 320 / grid.length));
+  const H = m.t + ch * grid.length + m.b;
+  const root = svg("svg", { width: W, height: H, role: "img", "aria-label": "Activity by hour of day" });
+  for (let h = 0; h < 24; h += (cw < 22 ? 3 : 2))
+    root.append(svg("text", { x: m.l + h * cw + 1, y: 11, text: pad(h) }));
+  const labelEvery = Math.ceil(grid.length / Math.floor(320 / 13));
+  grid.forEach((row, i) => {
+    const date = d.days[i].date;
+    if (i % labelEvery === 0)
+      root.append(svg("text", { x: m.l - 8, y: m.t + i * ch + ch / 2 + 4, "text-anchor": "end", text: dayLabel(date, { weekday: "short", day: "numeric" }) }));
+    row.forEach((v, h) => {
+      const cell = svg("rect", { x: m.l + h * cw + 1, y: m.t + i * ch + 1, width: Math.max(1, cw - 2), height: Math.max(1, ch - 2), rx: 2, fill: color(v) });
+      hover(cell, (e) => showTip(e, `${dayLabel(date)} · ${pad(h)}:00–${pad((h + 1) % 24)}:00`,
+        [{ value: focus ? `${Math.round(v)} min` : num(v), label: focus ? "focus" : "app events" }]));
+      root.append(cell);
+    });
+  });
+  host.append(root);
+  const scale = el("span", {}, "less ", ...ramp.filter((_, i) => i % 2 === 0).map((c) => el("i", { style: { background: c } })), " more",
+    el("span", { style: { color: "var(--muted)", marginLeft: "8px" }, text: `(max ${focus ? Math.round(max) + " min" : num(max)})` }));
+  $("#heat-legend").replaceChildren(scale);
+}
+
+// ---------- day timeline ----------
+function fillDayPicker(days) {
+  const pick = $("#day-pick");
+  pick.replaceChildren(...days.slice().reverse().map((d) => el("option", { value: d, text: dayLabel(d, { weekday: "long", day: "numeric", month: "short" }) })));
+  pick.value = state.day;
+}
+
+async function loadDay() {
+  writeHash();
+  const day = await getJson(`/api/day?date=${state.day}`);
+  renderTimeline(day);
+}
+
+function renderTimeline(day) {
+  state.dayData = day;
+  const host = $("#timeline");
+  host.replaceChildren();
+  $("#day-sub").textContent = day.activeMs ? `${dur(day.activeMs)} focus` : "";
+  const act = $("#activity");
+  act.textContent = day.activity.length ? day.activity.join("\n") : "No app activity logged this day.";
+  if (!day.blocks.length) {
+    host.append(el("div", { class: "empty", text: "No focus time recorded this day." }));
+    $("#timeline-legend").replaceChildren();
+    return;
+  }
+  const dayStart = parseDay(day.date).getTime();
+  const first = Math.min(...day.blocks.map((b) => b.start));
+  const last = Math.max(...day.blocks.map((b) => b.end));
+  const h0 = Math.floor((first - dayStart) / 36e5), h1 = Math.min(24, Math.ceil((last - dayStart) / 36e5));
+  const t0 = dayStart + h0 * 36e5, t1 = dayStart + Math.max(h0 + 1, h1) * 36e5;
+  const W = width(host), m = { l: 4, r: 4, t: 4, b: 22 };
+  const lane = 28, idleLane = 6, H = m.t + lane + 6 + idleLane + m.b;
+  const x = (t) => m.l + ((t - t0) / (t1 - t0)) * (W - m.l - m.r);
+  const root = svg("svg", { width: W, height: H, role: "img", "aria-label": "Focus blocks across the day" });
+  const hours = (t1 - t0) / 36e5;
+  const hStep = [1, 2, 3, 4, 6].find((n) => hours / n <= (W - m.l - m.r) / 48) || 6;
+  for (let h = 0; h <= hours; h += hStep) {
+    const t = t0 + h * 36e5;
+    root.append(svg("line", { x1: x(t), x2: x(t), y1: m.t, y2: m.t + lane + 6 + idleLane, stroke: css("--grid") }));
+    root.append(svg("text", { x: x(t), y: H - 6, "text-anchor": h === 0 ? "start" : h >= hours ? "end" : "middle", text: pad((h0 + h) % 24) + ":00" }));
+  }
+  // Long blocks first, so short detours that fall inside them paint on top.
+  for (const b of day.blocks.slice().sort((a, b) => (b.end - b.start) - (a.end - a.start))) {
+    const bx = x(b.start), bw = Math.max(1.5, x(b.end) - bx - 1);
+    const r = svg("rect", { x: bx, y: m.t, width: bw, height: lane, rx: bw > 6 ? 3 : 0, fill: appColor(b.app) });
+    hover(r, (e) => showTip(e, `${clock(b.start)}–${clock(b.end)}`, [{ value: dur(b.activeMs), label: appName(b.app), color: appColor(b.app) }], b.title || null));
+    root.append(r);
+  }
+  for (const [s, e] of day.idle) {
+    const ix = x(Math.max(s, t0)), iw = Math.max(1, x(Math.min(e, t1)) - ix);
+    const r = svg("rect", { x: ix, y: m.t + lane + 6, width: iw, height: idleLane, rx: 2, fill: css("--axis") });
+    hover(r, (ev) => showTip(ev, `${clock(s)}–${clock(e)}`, [{ value: dur(e - s), label: "idle or away" }]));
+    root.append(r);
+  }
+  host.append(root);
+  const apps = [...new Set(day.blocks.map((b) => b.app))];
+  const shown = apps.filter((a) => appSlot.has(a));
+  const items = shown.map((a) => el("span", {}, el("i", { style: { background: appColor(a) } }), appName(a)));
+  if (shown.length < apps.length) items.push(el("span", {}, el("i", { style: { background: css("--other") } }), "Other apps"));
+  items.push(el("span", {}, el("i", { style: { background: css("--axis"), height: "4px" } }), "Idle"));
+  $("#timeline-legend").replaceChildren(...items);
+}
+
+// ---------- apps table ----------
+function renderApps(d) {
+  const host = $("#apps");
+  if (!d.apps.length) { host.replaceChildren(el("div", { class: "empty", text: "No apps had focus in this range." })); return; }
+  const total = d.totals.activeMs, top = d.apps[0].ms;
+  const rows = d.apps.slice(0, 25).map((a) => el("tr", {},
+    el("td", {}, el("span", { class: "dot", style: { background: appColor(a.app) } }), appName(a.app)),
+    el("td", { class: "num" }, el("span", { class: "share", style: { width: Math.max(2, (a.ms / top) * 80) + "px", background: appColor(a.app) } }), dur(a.ms)),
+    el("td", { class: "num", text: Math.round((a.ms / total) * 100) + "%" }),
+    el("td", { class: "num", text: a.blocks || "" }),
+    el("td", { class: "title", text: a.topTitle || "", title: a.topTitle || "" })));
+  const table = el("table", {},
+    el("thead", {}, el("tr", {}, el("th", { text: "App" }), el("th", { class: "num", text: "Time" }), el("th", { class: "num", text: "Share" }),
+      el("th", { class: "num", text: "Blocks", title: "Stretches of a minute or more" }), el("th", { text: "Most-used window" }))),
+    el("tbody", {}, ...rows));
+  const extra = d.apps.length > 25 ? el("div", { class: "empty", text: `+ ${d.apps.length - 25} more apps, ${dur(d.apps.slice(25).reduce((s, a) => s + a.ms, 0))} in total` }) : null;
+  host.replaceChildren(table, extra || "");
+}
+
+// ---------- small multiples per source ----------
+function renderMultiples(d) {
+  const host = $("#multiples");
+  const byHour = d.days.length === 1;
+  $("#multiples-sub").textContent = byHour ? "events per hour" : "events per day";
+  const sources = d.sources;
+  if (!sources.length) { host.replaceChildren(el("div", { class: "empty", text: "No app events in this range." })); return; }
+  const series = sources.map((s) => {
+    const values = byHour ? d.sourceHours[s] : d.days.map((x) => x.events[s] || 0);
+    return { s, values, total: values.reduce((a, b) => a + b, 0) };
+  }).sort((a, b) => b.total - a.total);
+  host.replaceChildren(...series.map(({ s, values, total }) => {
+    const box = el("div", {}, el("div", { class: "m-head" }, el("b", { text: sourceName(s) }), el("span", { text: num(total) })));
+    const W = 240, H = 64, max = Math.max(1, ...values);
+    const band = W / values.length, bw = Math.min(24, Math.max(2, band - 2));
+    const root = svg("svg", { width: "100%", height: H, viewBox: `0 0 ${W} ${H}`, preserveAspectRatio: "none", role: "img", "aria-label": `${sourceName(s)} events` });
+    root.append(svg("line", { x1: 0, x2: W, y1: H - 0.5, y2: H - 0.5, stroke: css("--axis") }));
+    values.forEach((v, i) => {
+      const h = (v / max) * (H - 4);
+      if (h > 0) root.append(svg("path", { d: topRounded(i * band + (band - bw) / 2, H - 1 - h, bw, h, Math.min(3, bw / 2)), fill: css("--s1") }));
+      const hit = svg("rect", { x: i * band, y: 0, width: band, height: H, fill: "transparent" });
+      hover(hit, (e) => showTip(e, byHour ? `${pad(i)}:00–${pad((i + 1) % 24)}:00` : dayLabel(d.days[i].date), [{ value: num(v), label: `${sourceName(s)} events` }]));
+      root.append(hit);
+    });
+    box.append(root);
+    return box;
+  }));
+}
+
+// ---------- horizontal bar lists ----------
+function barList(host, items, { value = (c) => c.n, fmt = num, note = null } = {}) {
+  if (!items.length) { host.replaceChildren(el("div", { class: "empty", text: "Nothing in this range." })); return; }
+  const max = Math.max(...items.map(value)) || 1;
+  const wrap = el("div", { class: "bars" });
+  for (const c of items) {
+    const v = value(c);
+    const row = el("div", { class: "row" },
+      el("div", { class: "name", text: c.name, title: c.name }),
+      el("div", { class: "track" }, el("div", { class: "fill", style: { width: (v / max) * 100 + "%" } })),
+      el("div", { class: "val", text: fmt(v, c) }));
+    wrap.append(row);
+    for (const cell of row.children)
+      hover(cell, (e) => showTip(e, c.name, [{ value: fmt(v, c), label: note ? note(c) : "" }]));
+  }
+  host.replaceChildren(wrap);
+}
+const stats = (host, parts) => host.replaceChildren(...parts.filter(Boolean).flatMap(([n, label, cls]) =>
+  [el("span", { class: cls || null }, el("b", { text: n }), " " + label)]));
+
+function renderMusic(m) {
+  stats($("#music-stats"), [
+    [num(m.listens), "tracks"], [num(m.plays), "counted as plays"], [num(m.skips), "skipped"],
+    m.listenedS ? [dur(m.listenedS * 1000), "listened"] : null]);
+  const t = (s) => dur(s * 1000);
+  barList($("#music-artists"), m.artists, { value: (c) => c.value, fmt: t, note: (c) => `${num(c.n)} tracks` });
+  barList($("#music-albums"), m.albums.slice(0, 8), { value: (c) => c.value, fmt: t, note: (c) => `${num(c.n)} tracks` });
+  barList($("#music-genres"), m.genres, { value: (c) => c.value, fmt: t, note: (c) => `${num(c.n)} tracks` });
+  const stars = m.stars.map((n, i) => ({ name: `${(i + 1) / 2}★`, n })).reverse().filter((s) => s.n > 0);
+  barList($("#music-stars"), stars, { note: () => "tracks rated (Aurora NG)" });
+}
+
+function renderWeb(w) {
+  stats($("#web-stats"), [[num(w.pages), "pages"], [num(w.searches.length), "searches"]]);
+  barList($("#web-sites"), w.sites, { note: () => "pages" });
+  const list = $("#web-searches");
+  if (!w.searches.length) { list.replaceChildren(el("li", { class: "empty", text: "No searches in this range." })); return; }
+  list.replaceChildren(...w.searches.map((s) => el("li", {},
+    el("span", { class: "when", text: state.from === state.to ? clock(s.ts) : `${dayLabel(isoDay(new Date(s.ts)), { day: "numeric", month: "short" })} ${clock(s.ts)}` }),
+    el("span", { class: "site", text: s.site }),
+    el("span", { text: `“${s.query}”` }))));
+}
+
+function renderCode(c, t) {
+  stats($("#code-stats"), [[num(t.commits), "commits"], [num(t.pushes), "pushes"], [num(t.prompts), "prompts"], t.agentS ? [dur(t.agentS * 1000), "agent work"] : null]);
+  barList($("#code-repos"), c.repos, { note: () => "commits" });
+  barList($("#code-projects"), c.projects, { value: (x) => x.value, fmt: (v) => dur(v * 1000), note: (x) => `${num(x.n)} prompts` });
+  const host = $("#code-models");
+  if (!c.models.length) { host.replaceChildren(el("div", { class: "empty", text: "No agent runs in this range." })); return; }
+  host.replaceChildren(el("table", {},
+    el("thead", {}, el("tr", {}, el("th", { text: "Model" }), el("th", { class: "num", text: "Prompts" }), el("th", { class: "num", text: "Agent time" }))),
+    el("tbody", {}, ...c.models.map((x) => el("tr", {}, el("td", { text: x.name }), el("td", { class: "num", text: num(x.n) }), el("td", { class: "num", text: dur(x.value * 1000) }))))));
+}
+
+function renderShell(s) {
+  stats($("#shell-stats"), [[num(s.commands), "commands"], s.failed ? [num(s.failed), "failed", "status-bad"] : null]);
+  barList($("#shell-programs"), s.programs, { note: () => "commands" });
+  barList($("#shell-folders"), s.folders, { note: () => "commands" });
+}
+
+function renderFiles(d) {
+  const t = d.totals;
+  stats($("#files-stats"), [[num(t.fileOps), "file operations"], [num(t.albumsAdded), "albums added"], [num(t.albumsRemoved), "removed"], [num(t.tagChanges), "tag changes"], [num(t.ratings), "rating changes"]]);
+  barList($("#files-ops"), d.fileOps, { note: () => "items" });
+}
+
+// ---------- event log ----------
+const BUILTIN = ["focus", "idle", "session", "agent", "process"];
+function fillLogSources(sources) {
+  const sel = $("#log-source"), current = sel.value || "all";
+  const all = [...new Set([...sources, ...BUILTIN])];
+  sel.replaceChildren(el("option", { value: "all", text: "All but processes" }), ...all.map((s) => el("option", { value: s, text: sourceName(s) })));
+  sel.value = all.includes(current) ? current : "all";
+}
+function resetLog() { state.log = { rows: [], done: false }; $("#log tbody").replaceChildren(); loadLog(); }
+async function loadLog() {
+  const before = state.log.rows.length ? state.log.rows[state.log.rows.length - 1].id : "";
+  const p = new URLSearchParams({ from: state.from, to: state.to, source: $("#log-source").value || "all", q: $("#log-q").value, limit: 100 });
+  if (before) p.set("before", before);
+  const rows = await getJson(`/api/events?${p}`);
+  state.log.rows.push(...rows);
+  state.log.done = rows.length < 100;
+  const multiDay = state.from !== state.to;
+  $("#log tbody").append(...rows.map((r) => el("tr", {},
+    el("td", { class: "time", text: multiDay ? `${dayLabel(isoDay(new Date(r.ts)), { day: "numeric", month: "short" })} ${clock(r.ts)}` : clock(r.ts) }),
+    el("td", { text: sourceName(r.source) }),
+    el("td", { text: r.kind }),
+    el("td", { text: r.app ? appName(r.app) : "" }),
+    el("td", { class: "title", text: r.title || "", title: r.title || "" }))));
+  if (!state.log.rows.length) $("#log tbody").append(el("tr", {}, el("td", { colspan: 5, class: "empty", text: "No events match." })));
+  $("#log-more").hidden = state.log.done;
+}
+
+// ---------- wiring ----------
+$("#presets").addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) setPreset(b.dataset.preset); });
+for (const id of ["#from", "#to"]) $(id).addEventListener("change", () => {
+  let f = $("#from").value, t = $("#to").value;
+  if (!f || !t) return;
+  if (f > t) [f, t] = [t, f];
+  state.from = f; state.to = t; state.day = null;
+  load();
+});
+$("#heat-mode").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.heat = b.dataset.mode;
+  for (const x of document.querySelectorAll("#heat-mode button")) x.setAttribute("aria-pressed", String(x === b));
+  if (state.data) renderHeatmap(state.data);
+});
+$("#day-pick").addEventListener("change", (e) => { state.day = e.target.value; loadDay(); });
+$("#log-source").addEventListener("change", resetLog);
+let qTimer;
+$("#log-q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(resetLog, 250); });
+$("#log-more").addEventListener("click", loadLog);
+
+// Theme: follows Windows unless toggled; the choice is remembered in this browser only.
+function applyTheme(t) { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }
+try { applyTheme(localStorage.getItem("watchme-theme")); } catch {}
+$("#theme").addEventListener("click", () => {
+  const dark = document.documentElement.dataset.theme
+    ? document.documentElement.dataset.theme === "dark"
+    : matchMedia("(prefers-color-scheme: dark)").matches;
+  const next = dark ? "light" : "dark";
+  applyTheme(next);
+  try { localStorage.setItem("watchme-theme", next); } catch {}
+  rerender();
+});
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => rerender());
+
+function rerender() { if (state.data) renderAll(); if (state.dayData) renderTimeline(state.dayData); }
+let resizeTimer;
+addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(rerender, 150); });
+
+readHash();
+load();
+</script>
+</body>
+</html>
