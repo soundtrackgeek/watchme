@@ -98,6 +98,23 @@ td.time { white-space: nowrap; font-variant-numeric: tabular-nums; color: var(--
 details { margin-top: 10px; }
 summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
 .activity { font: 12px/1.6 ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; color: var(--text-2); max-height: 360px; overflow: auto; margin: 12px 0 0; padding: 10px 12px; background: var(--page); border-radius: 8px; border: 1px solid var(--border); }
+.activity-filter { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin-top: 10px; font-size: 13px; color: var(--text-2); }
+.activity-filter b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.activity-filter button[hidden] { display: none; }
+/* Two range inputs stacked on one rail: only their thumbs take the pointer. */
+.range { position: relative; height: 34px; flex: 1 1 260px; max-width: 520px; }
+.range .rail, .range .sel { position: absolute; top: 10px; height: 4px; border-radius: 2px; }
+.range .rail { left: 7px; right: 7px; background: var(--grid); }
+.range .sel { background: var(--s1); }
+.range input { position: absolute; left: 0; right: 0; top: 5px; width: 100%; height: 14px; margin: 0; background: none; pointer-events: none; -webkit-appearance: none; appearance: none; }
+.range input::-webkit-slider-runnable-track { background: none; height: 14px; }
+.range input::-moz-range-track { background: none; }
+.range input::-webkit-slider-thumb { -webkit-appearance: none; pointer-events: auto; width: 14px; height: 14px; border-radius: 50%; background: var(--s1); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--s1); cursor: grab; }
+.range input::-moz-range-thumb { pointer-events: auto; width: 10px; height: 10px; border-radius: 50%; background: var(--s1); border: 2px solid var(--surface); box-shadow: 0 0 0 1px var(--s1); cursor: grab; }
+.range input:focus-visible::-webkit-slider-thumb { box-shadow: 0 0 0 3px var(--text-2); }
+.range input:focus-visible::-moz-range-thumb { box-shadow: 0 0 0 3px var(--text-2); }
+.range .ticks { position: absolute; left: 7px; right: 7px; top: 19px; height: 14px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.range .ticks span { position: absolute; transform: translateX(-50%); }
 .multiples { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
 .multiples .m-head { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; }
 .multiples .m-head b { font-weight: 600; }
@@ -207,7 +224,19 @@ tr.detail .bars .name { max-width: 520px; }
     </div>
     <div id="timeline"></div>
     <div class="legend" id="timeline-legend"></div>
-    <details open><summary>Activity in apps</summary><div class="activity" id="activity"></div></details>
+    <details open id="activity-box"><summary>Activity in apps</summary>
+      <div class="activity-filter" id="activity-filter">
+        <div class="range" id="span-range">
+          <div class="rail"></div><div class="sel" id="span-sel"></div>
+          <input type="range" id="span-from" min="0" max="1440" step="15" value="0" aria-label="Show activity from">
+          <input type="range" id="span-to" min="0" max="1440" step="15" value="1440" aria-label="Show activity until">
+          <div class="ticks"><span style="left:0%">00</span><span style="left:25%">06</span><span style="left:50%">12</span><span style="left:75%">18</span><span style="left:100%">24</span></div>
+        </div>
+        <span id="activity-filter-text"></span>
+        <button class="iconbtn" id="activity-filter-clear" hidden>Show the whole day</button>
+      </div>
+      <div class="activity" id="activity"></div>
+    </details>
   </section>
 
   <div class="grid g2">
@@ -378,7 +407,7 @@ const appName = (app) => app.replace(/\.exe$/i, "");
 
 // ---------- state ----------
 const state = {
-  from: null, to: null, data: null, dayData: null, heat: "focus", day: null,
+  from: null, to: null, data: null, dayData: null, heat: "focus", day: null, span: null,
   log: { rows: [], done: false, gen: 0 }, logApp: null, openApps: new Set(), busy: false, updated: 0,
 };
 
@@ -388,11 +417,15 @@ function readHash() {
   state.to = p.get("to") || today;
   state.from = p.get("from") || addDays(state.to, -6);
   state.day = p.get("day");
+  // "t=1020-1170": the activity list's time range, in minutes after midnight.
+  const t = /^(\d{1,4})-(\d{1,4})$/.exec(p.get("t") || "");
+  state.span = state.day && t && Number(t[1]) < Number(t[2]) && Number(t[2]) <= 1440 ? [Number(t[1]), Number(t[2])] : null;
   state.logApp = p.get("app");
 }
 function writeHash() {
   const p = new URLSearchParams({ from: state.from, to: state.to });
   if (state.day) p.set("day", state.day);
+  if (state.day && state.span) p.set("t", state.span.join("-"));
   if (state.logApp) p.set("app", state.logApp);
   history.replaceState(null, "", "#" + p);
 }
@@ -407,18 +440,72 @@ function activate(node, fn) {
   });
 }
 
-// Opens one day of the range in the timeline, from a chart click.
-function selectDay(date) {
+// Opens one day of the range in the timeline, from a chart click. With a span ([from, to] in
+// minutes after midnight), the activity list below the timeline shows only that part of the day,
+// until the slider is moved or "Show the whole day" clears it.
+async function selectDay(date, span = null) {
   if (!state.data || !state.data.days.some((d) => d.date === date)) return;
   hideTip();
-  if (date !== state.day) {
-    state.day = date;
-    $("#day-pick").value = date;
-    renderPerDay(state.data);
-    renderHeatmap(state.data);
-    loadDay();
+  const changed = date !== state.day;
+  state.day = date;
+  state.span = span;
+  $("#day-pick").value = date;
+  renderPerDay(state.data);
+  renderHeatmap(state.data);
+  if (changed) await loadDay();
+  else { writeHash(); if (state.dayData) renderTimeline(state.dayData); }
+  if (!span) {
+    $("#timeline-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+  } else {
+    $("#activity-box").open = true;
+    $("#activity-box").scrollIntoView({ behavior: "smooth", block: "start" });
   }
-  $("#timeline-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+const hourSpan = (h) => [h * 60, h * 60 + 60];
+
+// Sets the activity list's time range; the whole day is stored as no range at all.
+function setSpan(lo, hi, { heatmap = true } = {}) {
+  state.span = lo <= 0 && hi >= 1440 ? null : [lo, hi];
+  writeHash();
+  if (state.dayData) renderTimeline(state.dayData);
+  if (heatmap && state.data) renderHeatmap(state.data);
+}
+
+const minuteClock = (m) => `${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
+
+// Activity lines start "HH:mm" or "HH:mm–HH:mm"; a line belongs to the range its time span touches.
+function activityInSpan(lines, span) {
+  if (!span) return lines;
+  const [lo, hi] = span;
+  return lines.filter((line) => {
+    const m = /^(\d\d):(\d\d)(?:–(\d\d):(\d\d))?/.exec(line);
+    if (!m) return false;
+    const start = Number(m[1]) * 60 + Number(m[2]);
+    let end = m[3] ? Number(m[3]) * 60 + Number(m[4]) : start;
+    if (end < start) end = 24 * 60; // runs past midnight
+    return start < hi && end >= lo;
+  });
+}
+
+function renderActivity(day) {
+  const [lo, hi] = state.span || [0, 1440];
+  const from = $("#span-from"), to = $("#span-to");
+  // Leave a thumb alone while it is being dragged, so the browser's own value wins.
+  if (document.activeElement !== from) from.value = lo;
+  if (document.activeElement !== to) to.value = hi;
+  from.style.zIndex = lo > 1320 ? "2" : ""; // keep the left thumb reachable when both sit at the end
+  const sel = $("#span-sel");
+  sel.style.left = `calc(7px + (100% - 14px) * ${lo / 1440})`;
+  sel.style.width = `calc((100% - 14px) * ${(hi - lo) / 1440})`;
+
+  const lines = activityInSpan(day.activity, state.span);
+  const range = `${minuteClock(lo)}–${minuteClock(hi)}`;
+  $("#activity-filter-text").replaceChildren(el("b", { text: range }),
+    state.span ? ` · ${lines.length} of ${day.activity.length} lines` : ` · ${day.activity.length} lines`);
+  $("#activity-filter-clear").hidden = !state.span;
+  $("#activity").textContent = lines.length ? lines.join("\n")
+    : day.activity.length ? `Nothing logged in apps between ${range}.`
+    : "No app activity logged this day.";
 }
 
 function setPreset(preset) {
@@ -427,6 +514,7 @@ function setPreset(preset) {
   else if (preset === "yesterday") { state.from = state.to = addDays(today, -1); }
   else { state.to = today; state.from = addDays(today, -(Number(preset) - 1)); }
   state.day = null;
+  state.span = null;
   load();
 }
 
@@ -456,6 +544,7 @@ async function fetchRange() {
   state.data = data;
   const days = data.days.map((d) => d.date);
   if (!state.day || !days.includes(state.day)) {
+    state.span = null;
     const withData = data.days.filter((d) => d.activeMs > 0 || Object.keys(d.events).length > 0);
     state.day = (withData.length ? withData[withData.length - 1] : data.days[data.days.length - 1]).date;
   }
@@ -698,11 +787,13 @@ function renderHeatmap(d) {
       root.append(svg("text", { x: m.l - 8, y: m.t + i * ch + ch / 2 + 4, "text-anchor": "end", style: picked ? "fill: var(--text); font-weight: 600" : null,
         text: dayLabel(date, { weekday: "short", day: "numeric" }) }));
     row.forEach((v, h) => {
-      const cell = svg("rect", { x: m.l + h * cw + 1, y: m.t + i * ch + 1, width: Math.max(1, cw - 2), height: Math.max(1, ch - 2), rx: 2, fill: color(v) });
+      const hourPicked = !!state.span && date === state.day && h * 60 < state.span[1] && h * 60 + 60 > state.span[0];
+      const cell = svg("rect", { x: m.l + h * cw + 1, y: m.t + i * ch + 1, width: Math.max(1, cw - 2), height: Math.max(1, ch - 2), rx: 2, fill: color(v),
+        stroke: hourPicked ? css("--text") : null, "stroke-width": hourPicked ? 2 : null });
       hover(cell, (e) => showTip(e, `${dayLabel(date)} · ${pad(h)}:00–${pad((h + 1) % 24)}:00`,
         [{ value: focus ? `${Math.round(v)} min` : num(v), label: focus ? "focus" : "app events" }],
-        multi ? "Click to open this day's timeline" : null));
-      if (multi) activate(cell, () => selectDay(date));
+        "Click to see what you did in this hour"));
+      activate(cell, () => selectDay(date, hourSpan(h)));
       root.append(cell);
     });
     if (picked)
@@ -733,8 +824,7 @@ function renderTimeline(day) {
   const host = $("#timeline");
   host.replaceChildren();
   $("#day-sub").textContent = day.activeMs ? `${dur(day.activeMs)} focus` : "";
-  const act = $("#activity");
-  act.textContent = day.activity.length ? day.activity.join("\n") : "No app activity logged this day.";
+  renderActivity(day);
   if (!day.blocks.length) {
     host.append(el("div", { class: "empty", text: "No focus time recorded this day." }));
     $("#timeline-legend").replaceChildren();
@@ -775,6 +865,13 @@ function renderTimeline(day) {
     const r = svg("rect", { x: px, y: m.t + lane + 6, width: pw, height: idleLane, rx: 2, fill: css("--s4") });
     hover(r, (ev) => showTip(ev, `${clock(s)}–${clock(e)}`, [{ value: dur(e - s), label: "paused" }], "Nothing was recorded (watchme pause)"));
     root.append(r);
+  }
+  // Outline the part of the day the activity list is filtered to.
+  if (state.span) {
+    const hs = Math.max(t0, dayStart + state.span[0] * 6e4), he = Math.min(t1, dayStart + state.span[1] * 6e4);
+    if (he > hs)
+      root.append(svg("rect", { x: x(hs), y: m.t - 2, width: x(he) - x(hs), height: lane + 6 + idleLane + 4, rx: 4,
+        fill: "none", stroke: css("--text"), "stroke-width": 1.5, "pointer-events": "none" }));
   }
   host.append(root);
   const apps = [...new Set(day.blocks.map((b) => b.app))];
@@ -874,8 +971,8 @@ function renderMultiples(d) {
       if (h > 0) root.append(svg("path", { d: topRounded(i * band + (band - bw) / 2, H - 1 - h, bw, h, Math.min(3, bw / 2)), fill: css("--s1") }));
       const hit = svg("rect", { x: i * band, y: 0, width: band, height: H, fill: "transparent" });
       hover(hit, (e) => showTip(e, byHour ? `${pad(i)}:00–${pad((i + 1) % 24)}:00` : dayLabel(d.days[i].date), [{ value: num(v), label: `${sourceName(s)} events` }],
-        byHour ? null : "Click to open this day's timeline"));
-      if (!byHour) activate(hit, () => selectDay(d.days[i].date));
+        byHour ? "Click to see what you did in this hour" : "Click to open this day's timeline"));
+      activate(hit, () => byHour ? selectDay(d.days[0].date, hourSpan(i)) : selectDay(d.days[i].date));
       root.append(hit);
     });
     box.append(root);
@@ -1053,7 +1150,7 @@ for (const id of ["#from", "#to"]) $(id).addEventListener("change", () => {
   let f = $("#from").value, t = $("#to").value;
   if (!f || !t) return;
   if (f > t) [f, t] = [t, f];
-  state.from = f; state.to = t; state.day = null;
+  state.from = f; state.to = t; state.day = null; state.span = null;
   load();
 });
 $("#heat-mode").addEventListener("click", (e) => {
@@ -1064,9 +1161,25 @@ $("#heat-mode").addEventListener("click", (e) => {
 });
 $("#day-pick").addEventListener("change", (e) => {
   state.day = e.target.value;
+  state.span = null;
   if (state.data) { renderPerDay(state.data); renderHeatmap(state.data); }
   loadDay();
 });
+$("#activity-filter-clear").addEventListener("click", () => setSpan(0, 1440));
+// Dragging updates the list and the timeline outline live; the heatmap redraws on release.
+for (const id of ["#span-from", "#span-to"]) {
+  const input = $(id);
+  const read = () => {
+    let lo = Number($("#span-from").value), hi = Number($("#span-to").value);
+    if (hi - lo < 15) { // thumbs don't cross: the one being moved stops 15 minutes short
+      if (input.id === "span-from") lo = hi - 15; else hi = lo + 15;
+      input.value = input.id === "span-from" ? lo : hi;
+    }
+    return [lo, hi];
+  };
+  input.addEventListener("input", () => setSpan(...read(), { heatmap: false }));
+  input.addEventListener("change", () => setSpan(...read()));
+}
 $("#log-source").addEventListener("change", resetLog);
 $("#log-app-clear").addEventListener("click", () => setLogApp(null));
 $("#refresh").addEventListener("click", () => { if (!state.busy) load(); });

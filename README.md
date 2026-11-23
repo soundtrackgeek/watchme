@@ -431,7 +431,8 @@ For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you
 - **Focus time per day**, stacked by app (the top 7, the rest as *Other*), with a table view.
 - **When:** an hour-of-day grid of focus minutes or app events.
 - **Day timeline:** one day's blocks of work by app, idle stretches, and the report's *Activity
-  in apps* lines.
+  in apps* lines. Drag the slider above the lines to show only part of the day (17:00–19:30,
+  say); **Show the whole day** clears it.
 - **Apps:** time, share, blocks, hands-on time (for apps you use without focusing them, see
   above) and most-used window per app. Click an app to see its background use (hands-on,
   skips, ratings, playing), its window titles by focus time, and to show only that app's events
@@ -444,7 +445,9 @@ For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you
   titles and the event's data too (URLs, commands, folders, artists). Click a row to see
   everything recorded with it.
 
-Click a day in *Focus time per day*, *When* or *Activity in apps* to open it in the day timeline.
+Click a day in *Focus time per day* or *Activity in apps* to open it in the day timeline. Click
+an hour in *When* (or in a single day's *Activity in apps* charts) to open that day with its
+activity list set to that hour.
 **↻ Refresh** reloads the data; with **Auto** ticked the page refreshes itself every minute while
 the range includes today, adding new events to the top of the log without losing your place.
 

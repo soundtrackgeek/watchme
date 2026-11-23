@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.22.0] - 2026-11-23
+
+### Added
+
+- Dashboard: a time slider over the day timeline's *Activity in apps* list (00:00–24:00, in
+  15-minute steps) shows only what you did in part of the day, such as 17:00–19:30. Grouped lines
+  that overlap the range stay in. The range is outlined on the timeline and kept in the page's
+  address; **Show the whole day** clears it.
+- Dashboard: clicking an hour in *When*, or a bar in a single day's *Activity in apps* charts,
+  opens that day with the activity list set to that hour. Before, a click opened the whole day
+  and only worked for ranges of more than one day.
+
 ## [0.21.0] - 2026-11-23
 
 ### Added
