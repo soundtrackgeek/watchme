@@ -14,7 +14,17 @@ public static class EventSearch
 {
     /// <param name="Terms">Every term must match somewhere in the event; a term may hold spaces (a phrase).</param>
     /// <param name="Source">One source only; null searches all but process start and exit.</param>
-    public sealed record Query(IReadOnlyList<string> Terms, long? FromMs = null, long? ToMs = null, string? Source = null, int Limit = 50);
+    /// <param name="Types">Only events of these kinds (any of them); overrides <paramref name="Source"/>.</param>
+    /// <param name="DailyMinutes">Only events at this time of day, in minutes after local midnight (end excluded).</param>
+    /// <param name="OldestFirst">Page from the oldest match instead of the newest.</param>
+    public sealed record Query(IReadOnlyList<string> Terms, long? FromMs = null, long? ToMs = null, string? Source = null, int Limit = 50,
+        IReadOnlyList<EventType>? Types = null, (int From, int To)? DailyMinutes = null, bool OldestFirst = false);
+
+    /// <summary>
+    /// A kind of event: one source, optionally one kind, optionally only events whose data has
+    /// <paramref name="HasField"/> (Edge visits with a <c>search</c>).
+    /// </summary>
+    public sealed record EventType(string Source, string? Kind = null, string? HasField = null);
 
     public sealed record Hit(long Id, long Ts, string Source, string Kind, string? App, string? Title, string? Data);
 
@@ -28,38 +38,12 @@ public static class EventSearch
 
     public static Result Run(Database db, Query q)
     {
-        // The same conditions for the count and the page of hits.
-        SqliteCommand Command(string select, string tail)
-        {
-            var cmd = db.Connection.CreateCommand();
-            var where = new List<string>();
-            if (q.FromMs is { } from)
-            {
-                where.Add("ts >= $from");
-                cmd.Parameters.AddWithValue("$from", from);
-            }
-            if (q.ToMs is { } to)
-            {
-                where.Add("ts < $to");
-                cmd.Parameters.AddWithValue("$to", to);
-            }
-            if (string.IsNullOrEmpty(q.Source))
-                where.Add("source <> 'process'");
-            else
-            {
-                where.Add("source = $source");
-                cmd.Parameters.AddWithValue("$source", q.Source);
-            }
-            TextMatch.AddTerms(cmd, where, q.Terms);
-            cmd.CommandText = $"SELECT {select} FROM events WHERE {string.Join(" AND ", where)} {tail};";
-            return cmd;
-        }
-
-        using var count = Command("COUNT(*)", "");
+        using var count = Command(db, q, "COUNT(*)", "");
         var total = Convert.ToInt32(count.ExecuteScalar(), CultureInfo.InvariantCulture);
 
         // Newest by when it happened, not by id: scrapers import history late.
-        using var cmd = Command("id, ts, source, kind, app, title, data", "ORDER BY ts DESC, id DESC LIMIT $limit");
+        var order = q.OldestFirst ? "ORDER BY ts, id" : "ORDER BY ts DESC, id DESC";
+        using var cmd = Command(db, q, "id, ts, source, kind, app, title, data", $"{order} LIMIT $limit");
         cmd.Parameters.AddWithValue("$limit", Math.Clamp(q.Limit, 1, MaxLimit));
         var hits = new List<Hit>();
         using var r = cmd.ExecuteReader();
@@ -68,6 +52,68 @@ public static class EventSearch
                 r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5),
                 r.IsDBNull(6) ? null : r.GetString(6)));
         return new Result(hits, total);
+    }
+
+    /// <summary>
+    /// A command selecting <paramref name="select"/> from the events the query matches, so counts,
+    /// pages and sums (<c>watchme ask</c>) all use the same conditions.
+    /// </summary>
+    internal static SqliteCommand Command(Database db, Query q, string select, string tail)
+    {
+        var cmd = db.Connection.CreateCommand();
+        var where = new List<string>();
+        if (q.FromMs is { } from)
+        {
+            where.Add("ts >= $from");
+            cmd.Parameters.AddWithValue("$from", from);
+        }
+        if (q.ToMs is { } to)
+        {
+            where.Add("ts < $to");
+            cmd.Parameters.AddWithValue("$to", to);
+        }
+        if (q.Types is { Count: > 0 } types)
+        {
+            var any = new List<string>();
+            for (var i = 0; i < types.Count; i++)
+            {
+                var t = types[i];
+                var parts = new List<string> { $"source = $ts{i}" };
+                cmd.Parameters.AddWithValue($"$ts{i}", t.Source);
+                if (t.Kind is not null)
+                {
+                    parts.Add($"kind = $tk{i}");
+                    cmd.Parameters.AddWithValue($"$tk{i}", t.Kind);
+                }
+                if (t.HasField is not null)
+                {
+                    parts.Add($"json_extract(data, $tf{i}) IS NOT NULL");
+                    cmd.Parameters.AddWithValue($"$tf{i}", "$." + t.HasField);
+                }
+                any.Add("(" + string.Join(" AND ", parts) + ")");
+            }
+            where.Add("(" + string.Join(" OR ", any) + ")");
+        }
+        else if (string.IsNullOrEmpty(q.Source))
+            where.Add("source <> 'process'");
+        else
+        {
+            where.Add("source = $source");
+            cmd.Parameters.AddWithValue("$source", q.Source);
+        }
+        if (q.DailyMinutes is var (fromMin, toMin))
+        {
+            // SQLite's localtime is the same Windows time zone DateTime.Now uses.
+            where.Add("""
+                (CAST(strftime('%H', ts / 1000, 'unixepoch', 'localtime') AS INTEGER) * 60
+                 + CAST(strftime('%M', ts / 1000, 'unixepoch', 'localtime') AS INTEGER)) BETWEEN $dayFrom AND $dayTo
+                """);
+            cmd.Parameters.AddWithValue("$dayFrom", fromMin);
+            cmd.Parameters.AddWithValue("$dayTo", toMin - 1);
+        }
+        TextMatch.AddTerms(cmd, where, q.Terms);
+        cmd.CommandText = $"SELECT {select} FROM events{(where.Count == 0 ? "" : " WHERE " + string.Join(" AND ", where))} {tail};";
+        return cmd;
     }
 
     /// <summary>
@@ -152,9 +198,20 @@ public static class EventSearch
             return;
         }
         output.WriteLine(result.Total == 1 ? $"1 event matches {label}" : $"{result.Total:N0} events match {label}, newest first");
+        PrintHits(result.Hits, terms, output, color);
 
+        if (result.Total > result.Hits.Count)
+        {
+            output.WriteLine();
+            output.WriteLine($"Showing the newest {result.Hits.Count:N0} of {result.Total:N0}. Add words, --source or --days to narrow it down, or --limit N to see more.");
+        }
+    }
+
+    /// <summary>Hits under a heading per day, with the data field that matched when the title doesn't show it.</summary>
+    internal static void PrintHits(IEnumerable<Hit> hits, IReadOnlyList<string> terms, TextWriter output, bool color)
+    {
         string? lastDay = null;
-        foreach (var hit in result.Hits)
+        foreach (var hit in hits)
         {
             var local = DateTimeOffset.FromUnixTimeMilliseconds(hit.Ts).LocalDateTime;
             var day = local.ToString("dddd d MMMM yyyy", CultureInfo.CurrentCulture);
@@ -169,12 +226,6 @@ public static class EventSearch
             output.WriteLine(line + Highlight(Snippet(text, terms, 90), terms, color));
             if (MatchedField(hit, terms) is var (key, value))
                 output.WriteLine(new string(' ', line.Length) + Highlight($"{key}: {Snippet(value, terms, 90 - key.Length - 2)}", terms, color));
-        }
-
-        if (result.Total > result.Hits.Count)
-        {
-            output.WriteLine();
-            output.WriteLine($"Showing the newest {result.Hits.Count:N0} of {result.Total:N0}. Add words, --source or --days to narrow it down, or --limit N to see more.");
         }
     }
 

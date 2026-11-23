@@ -4,6 +4,22 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.26.0] - 2026-11-23
+
+### Added
+
+- `watchme ask "QUESTION"`: questions in plain English, answered from the whole history, on
+  your computer and without an AI service. *What did I do yesterday between 14 and 15?* sums up
+  that hour (apps, timeline, activity in apps); *Did I listen to a-ha in the last 2 weeks?* says
+  yes or no, how many listens and how long, and lists them; *What git repos did I create in the
+  last month?* lists the new repos. It understands days, ranges and times of day (*last week*,
+  *the past 3 days*, *on Friday*, *between 14 and 15*, *this morning*), the shape of answer wanted
+  (*did I*, *how many*, *when did I last/first*, *how long*) and what the question is about
+  (listens, ratings, searches, pages, commands, commits, new repos, prompts, file operations,
+  downloads, album and tag changes). Each answer says how the question was read.
+- Dashboard: an **Ask** box at the top that answers the same questions. Rows with a time open
+  that day's timeline with the activity list set to that time.
+
 ## [0.25.0] - 2026-11-23
 
 ### Changed

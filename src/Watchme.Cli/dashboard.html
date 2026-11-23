@@ -165,6 +165,34 @@ tr.detail .bars .name { max-width: 520px; }
 .banner b { font-weight: 600; }
 .banner ul { margin: 2px 0 0; padding-left: 18px; color: var(--text-2); flex-basis: 100%; }
 .banner code { font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--wash); padding: 1px 5px; border-radius: 4px; }
+/* Ask: a question in plain English, answered from the whole history. */
+.ask { margin-bottom: 16px; }
+.ask form { display: flex; gap: 8px; }
+.ask input[type=search] { flex: 1; min-width: 0; font-size: 15px; padding: 8px 12px; }
+.ask .examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; font-size: 12px; color: var(--muted); align-items: center; }
+.ask .examples button { border: 1px solid var(--border); background: var(--wash); color: var(--text-2); border-radius: 999px; padding: 2px 10px; font: inherit; cursor: pointer; }
+.ask .examples button:hover { color: var(--text); }
+.answer { margin-top: 14px; border-top: 1px solid var(--grid); padding-top: 12px; }
+.answer[hidden] { display: none; }
+.answer .headline { font-size: 16px; font-weight: 600; display: flex; gap: 12px; align-items: baseline; }
+.answer .headline span { flex: 1; }
+.answer .understood { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.answer .hint { color: var(--text-2); font-size: 12px; margin-top: 12px; }
+.answer .hint code { font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--wash); padding: 1px 5px; border-radius: 4px; }
+.answer .note { color: var(--muted); font-size: 12px; margin-top: 4px; }
+.answer-rows { display: grid; grid-template-columns: max-content max-content minmax(0, 1fr) max-content; gap: 0 12px; font-size: 13px; max-height: 420px; overflow: auto; }
+.answer-rows .row { display: contents; }
+.answer-rows .row > * { padding: 3px 0; border-bottom: 1px solid var(--grid); min-width: 0; }
+.answer-rows .row.clickable:hover > *, .answer-rows .row.clickable:focus-visible > * { background: var(--wash); }
+.answer-rows .row:focus-visible { outline: none; }
+.answer-rows .day { grid-column: 1 / -1; color: var(--text-2); font-size: 12px; font-weight: 600; padding: 8px 0 2px; }
+.answer-rows .when { color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.answer-rows .label { color: var(--text-2); white-space: nowrap; max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.answer-rows .text { overflow-wrap: anywhere; }
+.answer-rows .text small { display: block; color: var(--muted); font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; overflow-wrap: anywhere; }
+.answer-rows .val { color: var(--text-2); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+mark { background: color-mix(in srgb, var(--s4) 32%, transparent); color: inherit; border-radius: 2px; padding: 0 1px; }
+@media (max-width: 640px) { .answer-rows { grid-template-columns: max-content minmax(0, 1fr) max-content; } .answer-rows .label { display: none; } }
 .loading .card, .loading .tile { opacity: 0.55; transition: opacity 0.15s; }
 .error { color: var(--critical); padding: 12px; }
 @media (max-width: 640px) { .tile.hero { grid-column: span 1; } .tile.hero .value { font-size: 36px; } }
@@ -204,6 +232,19 @@ tr.detail .bars .name { max-width: 520px; }
 
   <div id="status" aria-live="polite"></div>
   <div id="error"></div>
+  <section class="card ask" id="ask-card">
+    <form id="ask-form" role="search">
+      <input type="search" id="ask-q" placeholder="Ask anything: What did I do yesterday between 14 and 15?" aria-label="Ask a question" autocomplete="off" maxlength="500">
+      <button class="iconbtn" type="submit">Ask</button>
+    </form>
+    <div class="examples" id="ask-examples">Try
+      <button type="button">What did I do yesterday between 14 and 15?</button>
+      <button type="button">Did I listen to a-ha in the last 2 weeks?</button>
+      <button type="button">What git repos did I create in the last month?</button>
+      <button type="button">How long was I in T3 Code today?</button>
+    </div>
+    <div class="answer" id="answer" aria-live="polite" hidden></div>
+  </section>
   <section class="tiles" id="tiles"></section>
 
   <div class="grid g2">
@@ -418,6 +459,7 @@ const appName = (app) => app.replace(/\.exe$/i, "");
 const state = {
   from: null, to: null, data: null, dayData: null, heat: "focus", day: null, span: null,
   log: { rows: [], done: false, gen: 0 }, logApp: null, openApps: new Set(), busy: false, updated: 0,
+  ask: "", askGen: 0,
 };
 
 function readHash() {
@@ -430,12 +472,14 @@ function readHash() {
   const t = /^(\d{1,4})-(\d{1,4})$/.exec(p.get("t") || "");
   state.span = state.day && t && Number(t[1]) < Number(t[2]) && Number(t[2]) <= 1440 ? [Number(t[1]), Number(t[2])] : null;
   state.logApp = p.get("app");
+  state.ask = p.get("ask") || "";
 }
 function writeHash() {
   const p = new URLSearchParams({ from: state.from, to: state.to });
   if (state.day) p.set("day", state.day);
   if (state.day && state.span) p.set("t", state.span.join("-"));
   if (state.logApp) p.set("app", state.logApp);
+  if (state.ask) p.set("ask", state.ask);
   history.replaceState(null, "", "#" + p);
 }
 
@@ -1285,6 +1329,119 @@ let qTimer;
 $("#log-q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(resetLog, 250); });
 $("#log-more").addEventListener("click", loadLog);
 
+// ---------- ask: a question in plain English, read and answered as by `watchme ask` ----------
+// Folds text one character for one, like TextMatch.Fold on the server, so positions in the folded
+// text are positions in the original and "tiesto" can mark "Tiësto".
+const STROKES = { "ø": "o", "Ø": "o", "đ": "d", "Đ": "d", "ł": "l", "Ł": "l", "ħ": "h", "Ħ": "h" };
+const foldChar = (c) => STROKES[c] || (c.charCodeAt(0) < 128 ? c.toLowerCase() : (c.toLowerCase().normalize("NFD")[0] || c));
+const fold = (s) => Array.prototype.map.call(s, foldChar).join("");
+function marked(text, terms) {
+  const hay = fold(text), on = new Uint8Array(text.length);
+  for (const t of terms) {
+    const needle = fold(t.trim());
+    if (!needle) continue;
+    for (let i = hay.indexOf(needle); i >= 0; i = hay.indexOf(needle, i + needle.length)) on.fill(1, i, i + needle.length);
+  }
+  const out = [];
+  for (let i = 0; i < text.length;) {
+    let j = i;
+    while (j < text.length && on[j] === on[i]) j++;
+    out.push(on[i] ? el("mark", { text: text.slice(i, j) }) : text.slice(i, j));
+    i = j;
+  }
+  return out;
+}
+// "For the full report: watchme report …" shows the command as code.
+function withCode(text) {
+  const at = text.indexOf("watchme ");
+  return at < 0 ? [text] : [text.slice(0, at), el("code", { text: text.slice(at) })];
+}
+
+// Opens the day of a row in the timeline, with the activity list narrowed to the row's time:
+// its own span ("14:02–14:40"), or half an hour either side of a single time. A row for a whole
+// day (no time, no event) opens the whole day.
+async function openAt(ts, when, wholeDay = false) {
+  const day = isoDay(new Date(ts));
+  const m = /^(\d\d):(\d\d)(?:–(\d\d):(\d\d))?/.exec(when || "");
+  let lo, hi;
+  if (m && m[3]) { lo = +m[1] * 60 + +m[2]; hi = +m[3] * 60 + +m[4]; if (hi <= lo) hi = 1440; }
+  else { const d = new Date(ts); lo = d.getHours() * 60 + d.getMinutes() - 30; hi = lo + 60; }
+  lo = Math.max(0, Math.floor(lo / 15) * 15);
+  hi = Math.min(1440, Math.max(lo + 15, Math.ceil(hi / 15) * 15));
+  const span = wholeDay ? null : [lo, hi];
+  if (state.data && state.data.days.some((d) => d.date === day)) return selectDay(day, span);
+  // Outside the range: widen it to take the day in, or jump to the day when that gets too long.
+  const from = day < state.from ? day : state.from, to = day > state.to ? day : state.to;
+  const long = (parseDay(to) - parseDay(from)) / 864e5 > 365;
+  state.from = long ? day : from;
+  state.to = long ? day : to;
+  state.day = day;
+  state.span = span;
+  await load();
+  $("#activity-box").open = true;
+  $(span ? "#activity-box" : "#timeline-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function renderAnswer(a) {
+  const box = $("#answer");
+  const close = el("button", { class: "iconbtn", type: "button", title: "Close the answer", "aria-label": "Close the answer", text: "×" });
+  close.addEventListener("click", () => { box.hidden = true; state.ask = ""; $("#ask-q").value = ""; writeHash(); });
+  const parts = [
+    el("div", { class: "headline" }, el("span", {}, ...marked(a.headline, a.terms)), close),
+    el("div", { class: "understood", text: a.understood }),
+  ];
+  // Matches from more than one day get a heading per day.
+  const multiDay = a.fromMs == null || a.toMs == null || a.toMs - a.fromMs > 864e5;
+  for (const sec of a.sections) {
+    const grid = el("div", { class: "answer-rows" });
+    let lastDay = null;
+    for (const r of sec.rows) {
+      if (multiDay && r.eventId != null && r.ts != null) {
+        const day = isoDay(new Date(r.ts));
+        if (day !== lastDay) { grid.append(el("div", { class: "day", text: dayLabel(day, { weekday: "long", day: "numeric", month: "long" }) })); lastDay = day; }
+      }
+      const text = el("div", { class: "text" }, ...marked(r.text || "", a.terms));
+      if (r.detail) text.append(el("small", {}, ...marked(r.detail, a.terms)));
+      const row = el("div", { class: "row" },
+        el("div", { class: "when", text: r.when || "" }),
+        el("div", { class: "label", text: r.label || "", title: r.label || "" }),
+        text,
+        el("div", { class: "val", text: r.value || "" }));
+      if (r.ts != null) {
+        row.setAttribute("title", "Show this time on the day timeline");
+        activate(row, () => openAt(r.ts, r.when, !r.when && r.eventId == null));
+      }
+      grid.append(row);
+    }
+    parts.push(el("h3", { text: sec.title }), grid);
+    if (sec.note) parts.push(el("div", { class: "note", text: sec.note }));
+  }
+  if (a.hint) parts.push(el("div", { class: "hint" }, ...withCode(a.hint)));
+  box.replaceChildren(...parts);
+  box.hidden = false;
+}
+
+// A newer question wins: a slow answer to an older one is dropped.
+async function ask(question) {
+  question = question.trim();
+  state.ask = question;
+  writeHash();
+  const box = $("#answer");
+  if (!question) { box.hidden = true; return; }
+  const gen = ++state.askGen;
+  box.hidden = false;
+  box.replaceChildren(el("div", { class: "understood", text: "Looking…" }));
+  try {
+    const a = await getJson(`/api/ask?q=${encodeURIComponent(question)}`);
+    if (gen === state.askGen) renderAnswer(a);
+  } catch (err) {
+    if (gen === state.askGen) box.replaceChildren(el("div", { class: "error", text: `Could not answer: ${err.message}` }));
+  }
+}
+$("#ask-form").addEventListener("submit", (e) => { e.preventDefault(); ask($("#ask-q").value); });
+for (const b of document.querySelectorAll("#ask-examples button"))
+  b.addEventListener("click", () => { $("#ask-q").value = b.textContent; ask(b.textContent); });
+
 // Theme: follows Windows unless toggled; the choice is remembered in this browser only.
 function applyTheme(t) { if (t) document.documentElement.dataset.theme = t; else delete document.documentElement.dataset.theme; }
 try { applyTheme(localStorage.getItem("watchme-theme")); } catch {}
@@ -1306,6 +1463,7 @@ addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setT
 readHash();
 showLogApp();
 load();
+if (state.ask) { $("#ask-q").value = state.ask; ask(state.ask); }
 </script>
 </body>
 </html>

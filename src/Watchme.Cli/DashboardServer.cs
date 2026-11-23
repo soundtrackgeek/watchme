@@ -120,6 +120,17 @@ internal static class DashboardServer
             return Results.Json(rows, Json);
         });
 
+        app.MapGet("/api/ask", (HttpContext ctx) =>
+        {
+            var question = ctx.Request.Query["q"].ToString().Trim();
+            if (question.Length == 0)
+                return Results.BadRequest("Ask a question: pass q.");
+            if (question.Length > 500)
+                return Results.BadRequest("Ask a shorter question.");
+            using var db = Database.Open(Paths.Database);
+            return Results.Json(Ask.Run(db, question, DateTime.Now), Json);
+        });
+
         app.MapGet("/api/status", () =>
         {
             using var db = Database.Open(Paths.Database);

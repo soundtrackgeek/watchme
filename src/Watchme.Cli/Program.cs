@@ -11,6 +11,7 @@ try
     {
         "report" or "today" => Report(args.Skip(1).FirstOrDefault()),
         "search" or "find" => SearchCommand.Run(args.Skip(1).ToArray()),
+        "ask" or "q" => AskCommand.Run(args.Skip(1).ToArray()),
         "status" => AgentControl.Status(),
         "pause" => PauseCommand.Pause(args.Skip(1).ToArray()),
         "resume" or "unpause" => PauseCommand.Resume(),
@@ -68,6 +69,9 @@ static int Help(string? unknown = null)
           watchme search WORDS... [options]             Find events in the whole history (titles, URLs,
                                                         commands, folders, artists, prompts)
                                                         --source S  --days N  --from D  --to D  --limit N
+          watchme ask "QUESTION"                        Ask in plain English: "What did I do yesterday
+                                                        between 14 and 15?", "Did I listen to a-ha in the
+                                                        last 2 weeks?", "How long was I in Photoshop today?"
           watchme status                                Is the agent running, and is every source working?
           watchme pause [30m|2h|1h30m|14:30]            Record nothing for a while (default 30 minutes),
                                                         app history included; resumes by itself

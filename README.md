@@ -278,6 +278,7 @@ watchme start
 ```text
 watchme report [DAY|RANGE]                    Summary of a day (default: today) or several days
 watchme search WORDS... [options]             Find events in the whole history
+watchme ask "QUESTION"                        Ask in plain English: "Did I listen to a-ha this week?"
 watchme status                                Is the agent running, and is every source working?
 watchme pause [30m|2h|1h30m|14:30]            Record nothing for a while; resumes by itself
 watchme resume                                End a pause early
@@ -486,6 +487,82 @@ history there is; the index makes the database file about 70% bigger. Words of o
 letters aren't in the index: they are matched by reading the events, ignoring case for English
 letters only.
 
+## Asking questions
+
+```powershell
+watchme ask "What did I do yesterday between 14 and 15?"
+watchme ask "Did I listen to a-ha in the last 2 weeks?"
+watchme ask "What git repos did I create in the last month?"
+watchme ask "How long was I in T3 Code today?"
+watchme ask "When did I last commit to watchme?"
+```
+
+`ask` reads a question in plain English and answers it from the database. It runs entirely on
+your computer, with no AI service: the question is taken apart into the time it is about, what
+kind of event it is about, and the words left over, which are searched for like
+[`watchme search`](#search) words. Under the answer it says how it read the question, so you can
+tell when it guessed wrong:
+
+```text
+Yes: 14 listens (32m 31s listened) matching “a-ha” in the last 2 weeks (10–23 November), on 2 different days. The last was today at 12:38: A-Ha – The Summers Of Our Youth.
+Looked for listens in Aurora and Aurora NG matching “a-ha”, in the last 2 weeks (10–23 November).
+
+Most often
+  13  A-Ha – Analogue
+   1  a-ha – Memorial Beach
+
+Newest first
+  Mon 23 Nov 2026
+  12:38        Aurora NG  A-Ha – The Summers Of Our Youth
+  ...
+```
+
+**The first words choose the kind of answer:**
+
+| Question starts with | Answer |
+| --- | --- |
+| *What did I do…*, *What was I doing…*, *Summarize…*, or just a time (`watchme ask yesterday`) | Focus time, the apps used, the timeline and the *Activity in apps* lines for that stretch, like a small report |
+| *Did I…*, *Have I…* | Yes or no, how many and on how many days, the latest match, and the matches |
+| *How many…*, *How often…* | The count, what came up most often, and the matches |
+| *When did I last…* / *When did I first…* | The newest (or oldest) match |
+| *How long…*, *How much time…* | Time the matching windows were in front (or time listened, for music) |
+| anything else (*What…*, *Which…*, *Show…*) | The matches, newest first |
+
+**Times** it understands: *today*, *yesterday*, *the day before yesterday*, weekdays (*on Friday*,
+*last Monday*), dates (*2026-11-20*, *20 November*, *November 3rd*), *last week* / *last month* /
+*last year* (the calendar ones, as in `watchme report last-week`), *this week* / *this month*,
+*the last 2 weeks*, *the past 3 days*, *the last 2 hours* (counted back from now), *3 days ago*,
+*in October*, *since Friday*, *between 2026-11-18 and 2026-11-20*; and times of day: *between 14 and
+15*, *from 9:30 to 11*, *14-15*, *2pm*, *after 18*, *before 10*, *at 14* (that hour), *around 14*
+(half an hour either side), *this morning*, *in the afternoon*, *last night*. With several days, a
+time of day applies to each day (*in the mornings last week*). With no time, questions cover your
+whole history, except *What did I do*, which means today.
+
+**What it is about** comes from the verbs and nouns in the question:
+
+| Words | Looks at |
+| --- | --- |
+| listen, hear, play, songs, tracks, music | Plays in Aurora and Aurora NG |
+| rate, rating, love, stars | Ratings in Aurora NG and Music Library |
+| added / imported albums, removed / deleted albums | Music Library's album changes |
+| changed tags or genres, retag | Tag changes in Aurora and Music Library |
+| created / started / new repos, clone, commit, push, git | Git |
+| search, google, look up | Edge searches, Flipside and Forever searches |
+| visit, browse, pages, sites | Edge |
+| commands, ran, PowerShell, terminal | PowerShell |
+| T3, Claude, Codex, prompts, agents | T3 Code |
+| copy, move, rename, delete, files | Total Commander |
+| download | Flipside and Forever |
+
+Without any of these, it searches every source but processes (*Did I use Photoshop?*, which
+also says how long Photoshop was in front). When a question has more than one, the first verb
+wins: *What did I search for on Rate Your Music?* is about searches.
+
+Two or more capitalised words in a row are kept together as a name (*Rate Your Music*, *Total
+Commander*). Put anything else that must stay as it is in double quotes inside the question, so
+its words aren't read as time or topic words: `watchme ask 'Did I listen to "Take On Me" last week?'`.
+Only English questions are understood.
+
 ## Dashboard
 
 ```powershell
@@ -497,6 +574,10 @@ and opens it in your browser. Press Ctrl+C to stop it. `--port N` picks the port
 leaves the browser alone. It reads the same database as the report, so it works whether or not
 the agent is running. **Open dashboard** in the [tray icon](#tray-icon)'s menu does the same without a
 terminal.
+
+At the top, **Ask** takes the same questions as [`watchme ask`](#asking-questions), whatever range
+is shown. Click a row of the answer that has a time to open that day in the day timeline, with
+its activity list set to that stretch of time. The question is kept in the address (`#…&ask=…`).
 
 For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you pick), it shows:
 
