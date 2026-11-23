@@ -27,7 +27,7 @@ public static class Dashboard
     public sealed record Search(long Ts, string Site, string Query);
 
     public sealed record Music(int Listens, int Plays, int Skips, double ListenedS,
-        List<Count> Artists, List<Count> Albums, List<Count> Genres, int[] Stars);
+        List<Count> Artists, List<Count> Albums, List<Count> Genres, int[] Stars, int Loved, int Unloved);
 
     public sealed record Web(int Pages, List<Count> Sites, List<Search> Searches);
 
@@ -306,10 +306,20 @@ public static class Dashboard
             .OrderByDescending(c => c.Value).Take(12).ToList();
 
         // Ratings are stored 0–100; the histogram has a bucket per half star from 0.5 to 5.
+        // A Love change carries the track's rating unchanged, so only changed ratings count.
         var stars = new int[10];
+        int loved = 0, unloved = 0;
         foreach (var e in events.Where(e => e.Source == EventSources.AuroraNg && e.Kind == "rating"))
         {
-            if (e.Data?["rating_after"] is not JsonValue v || !v.TryGetValue<double>(out var rating) || rating <= 0)
+            var (loveBefore, loveAfter) = (Str(e.Data, "love_before"), Str(e.Data, "love_after"));
+            if (loveBefore != loveAfter)
+            {
+                if (loveAfter == "loved") loved++;
+                else if (loveBefore == "loved") unloved++;
+            }
+
+            var rating = Num(e.Data?["rating_after"]);
+            if (rating <= 0 || rating == Num(e.Data?["rating_before"]))
                 continue;
             var bucket = (int)Math.Round(rating / 10.0) - 1;
             stars[Math.Clamp(bucket, 0, 9)]++;
@@ -320,7 +330,7 @@ public static class Dashboard
             listens.Count(e => e.Data?["play"] is JsonValue p && p.TryGetValue<bool>(out var b) && b),
             listens.Count(e => Str(e.Data, "outcome") == "skipped"),
             listens.Sum(e => Num(e.Data?["listened_s"])),
-            artists, albums, genres, stars);
+            artists, albums, genres, stars, loved, unloved);
     }
 
     private static Web BuildWeb(List<Ev> events)

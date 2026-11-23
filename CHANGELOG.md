@@ -4,6 +4,18 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.17.0] - 2026-11-23
+
+### Added
+
+- Dashboard: the Music card shows tracks loved and Love taken away in Aurora NG next to the
+  ratings given.
+
+### Fixed
+
+- Dashboard: loving a track no longer counts as a star rating in the ratings histogram (a Love
+  change carries the track's unchanged rating).
+
 ## [0.16.0] - 2026-11-23
 
 ### Added

@@ -333,7 +333,7 @@ For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you
   in apps* lines.
 - **Apps:** time, share, blocks and most-used window per app.
 - **Activity in apps:** events per day (or per hour, for a single day), one small chart per source.
-- **Music, Web, Code, PowerShell, Files:** top artists, albums, genres and ratings given; sites by
+- **Music, Web, Code, PowerShell, Files:** top artists, albums, genres, ratings given and tracks loved; sites by
   pages and your searches; commits per repo, agent time per project and model; programs and
   folders; Total Commander operations and library changes.
 - **Event log:** the raw events, filterable by source and searchable, newest first.

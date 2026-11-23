@@ -96,6 +96,26 @@ public class DashboardTests
     }
 
     [Fact]
+    public void Love_changes_are_counted_and_not_mistaken_for_ratings()
+    {
+        using var db = Database.Open(":memory:");
+        db.Insert([
+            new(At(10), EventSources.AuroraNg, "rating")
+                { ExtId = "1", Data = """{"rating_before":100,"rating_after":100,"love_before":"neutral","love_after":"loved"}""" },
+            new(At(10, 1), EventSources.AuroraNg, "rating")
+                { ExtId = "2", Data = """{"rating_before":80,"rating_after":80,"love_before":"loved","love_after":"neutral"}""" },
+            new(At(10, 2), EventSources.AuroraNg, "rating")
+                { ExtId = "3", Data = """{"rating_before":60,"rating_after":80,"love_before":"neutral","love_after":"neutral"}""" },
+        ]);
+
+        var music = Dashboard.Build(db, Day, Day).Music;
+
+        Assert.Equal((1, 1), (music.Loved, music.Unloved));
+        Assert.Equal(1, music.Stars.Sum());
+        Assert.Equal(1, music.Stars[7]);
+    }
+
+    [Fact]
     public void Event_log_leaves_out_processes_and_escapes_like_wildcards()
     {
         using var db = Database.Open(":memory:");

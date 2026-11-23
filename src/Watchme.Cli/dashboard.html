@@ -199,7 +199,7 @@ summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
       <h3>Artists by time listened</h3><div id="music-artists"></div>
       <h3>Albums</h3><div id="music-albums"></div>
       <h3>Genres</h3><div id="music-genres"></div>
-      <h3>Ratings given</h3><div id="music-stars"></div>
+      <h3>Ratings and Love given</h3><div class="stats" id="music-love"></div><div id="music-stars"></div>
     </section>
     <section class="card">
       <div class="card-head"><h2>Web</h2><span class="sub">Edge history</span></div>
@@ -721,7 +721,11 @@ function renderMusic(m) {
   barList($("#music-albums"), m.albums.slice(0, 8), { value: (c) => c.value, fmt: t, note: (c) => `${num(c.n)} tracks` });
   barList($("#music-genres"), m.genres, { value: (c) => c.value, fmt: t, note: (c) => `${num(c.n)} tracks` });
   const stars = m.stars.map((n, i) => ({ name: `${(i + 1) / 2}★`, n })).reverse().filter((s) => s.n > 0);
-  barList($("#music-stars"), stars, { note: () => "tracks rated (Aurora NG)" });
+  stats($("#music-love"), [m.loved ? [num(m.loved), "♥ loved"] : null, m.unloved ? [num(m.unloved), "Love taken away"] : null]);
+  if (stars.length || !(m.loved || m.unloved))
+    barList($("#music-stars"), stars, { note: () => "tracks rated (Aurora NG)" });
+  else
+    $("#music-stars").replaceChildren();
 }
 
 function renderWeb(w) {
