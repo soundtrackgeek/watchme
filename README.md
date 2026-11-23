@@ -331,17 +331,24 @@ For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you
 - **When:** an hour-of-day grid of focus minutes or app events.
 - **Day timeline:** one day's blocks of work by app, idle stretches, and the report's *Activity
   in apps* lines.
-- **Apps:** time, share, blocks and most-used window per app.
+- **Apps:** time, share, blocks and most-used window per app. Click an app to see its window
+  titles by focus time, and to show only that app's events in the event log.
 - **Activity in apps:** events per day (or per hour, for a single day), one small chart per source.
 - **Music, Web, Code, PowerShell, Files:** top artists, albums, genres, ratings given and tracks loved; sites by
   pages and your searches; commits per repo, agent time per project and model; programs and
   folders; Total Commander operations and library changes.
-- **Event log:** the raw events, filterable by source and searchable, newest first.
+- **Event log:** the raw events, newest first, filterable by source and app. The search matches
+  titles and the event's data too (URLs, commands, folders, artists). Click a row to see
+  everything recorded with it.
+
+Click a day in *Focus time per day*, *When* or *Activity in apps* to open it in the day timeline.
+**↻ Refresh** reloads the data; with **Auto** ticked the page refreshes itself every minute while
+the range includes today, adding new events to the top of the log without losing your place.
 
 The page is built into `watchme.exe` and loads nothing from the internet. The server only listens
 on the loopback address and only answers requests addressed to `127.0.0.1` or `localhost`, so a
-web page can't read your data through a DNS rebinding trick. The range is kept in the address
-(`#from=…&to=…`), so a view can be bookmarked. The theme follows Windows; the ◐ button switches it.
+web page can't read your data through a DNS rebinding trick. The range, the day and the app filter
+are kept in the address (`#from=…&to=…&day=…&app=…`), so a view can be bookmarked. The theme follows Windows; the ◐ button switches it.
 
 ## Querying the data yourself
 

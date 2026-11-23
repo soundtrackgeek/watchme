@@ -107,10 +107,11 @@ internal static class DashboardServer
             var from = Date(ctx, "from") ?? to;
             var q = ctx.Request.Query;
             long? before = long.TryParse(q["before"], out var b) ? b : null;
+            long? after = long.TryParse(q["after"], out var a) ? a : null;
             var limit = int.TryParse(q["limit"], out var l) ? l : 100;
             using var db = Database.Open(Paths.Database);
             var rows = Dashboard.Events(db, Dashboard.DayStart(from), Dashboard.DayStart(to.AddDays(1)),
-                q["source"], q["q"], before, limit);
+                q["source"], q["q"], before, limit, q["app"], after);
             return Results.Json(rows, Json);
         });
 

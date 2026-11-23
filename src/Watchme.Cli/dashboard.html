@@ -123,6 +123,24 @@ summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
 #tooltip .tt-row span { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; }
 #tooltip .key { width: 10px; height: 2px; border-radius: 1px; flex: none; }
 #tooltip .tt-note { color: var(--text-2); margin-top: 4px; white-space: normal; }
+.clickable { cursor: pointer; }
+tr.expandable:hover td { background: var(--wash); }
+tr.open td { background: var(--wash); border-bottom-color: transparent; }
+.caret { display: inline-block; width: 12px; color: var(--muted); font-size: 10px; }
+tr.detail > td { background: var(--page); padding: 10px 12px 14px 28px; }
+tr.detail .bars .name { max-width: 520px; }
+.detail-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 3px 14px; margin: 0; font-size: 12px; }
+.kv dt { color: var(--muted); }
+.kv dd { margin: 0; font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-word; color: var(--text); }
+.kv a { color: var(--s1); }
+.chip { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); background: var(--wash); border-radius: 999px; padding: 2px 4px 2px 10px; font-size: 13px; }
+.chip button { border: 0; background: none; color: var(--text-2); cursor: pointer; font: inherit; padding: 0 6px; border-radius: 999px; }
+.chip button:hover { color: var(--text); background: var(--wash); }
+.chip[hidden] { display: none; }
+.refresh { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; }
+.refresh label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+#updated { color: var(--muted); font-variant-numeric: tabular-nums; }
 .loading .card, .loading .tile { opacity: 0.55; transition: opacity 0.15s; }
 .error { color: var(--critical); padding: 12px; }
 @media (max-width: 640px) { .tile.hero { grid-column: span 1; } .tile.hero .value { font-size: 36px; } }
@@ -145,6 +163,11 @@ summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
       <input type="date" id="to" aria-label="To">
     </div>
     <div class="spacer"></div>
+    <div class="refresh">
+      <span id="updated"></span>
+      <label title="Reload every minute while the range includes today"><input type="checkbox" id="auto"> Auto</label>
+      <button class="iconbtn" id="refresh" title="Reload the data">↻ Refresh</button>
+    </div>
     <button class="iconbtn" id="theme" title="Switch light and dark">◐ Theme</button>
   </header>
 
@@ -153,7 +176,7 @@ summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
 
   <div class="grid g2">
     <section class="card">
-      <div class="card-head"><h2>Focus time per day</h2><span class="sub">by app, top 7</span></div>
+      <div class="card-head"><h2>Focus time per day</h2><span class="sub">by app, top 7 · click a day for its timeline</span></div>
       <div id="per-day"></div>
       <div class="legend" id="per-day-legend"></div>
       <details><summary>Table</summary><div class="scroll" id="per-day-table"></div></details>
@@ -171,7 +194,7 @@ summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
     </section>
   </div>
 
-  <section class="card" style="margin-bottom:16px">
+  <section class="card" style="margin-bottom:16px" id="timeline-card">
     <div class="card-head">
       <h2>Day timeline</h2><span class="sub" id="day-sub"></span>
       <div class="right"><select id="day-pick" aria-label="Day"></select></div>
@@ -183,7 +206,7 @@ summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
 
   <div class="grid g2">
     <section class="card">
-      <div class="card-head"><h2>Apps</h2><span class="sub">focus time in range</span></div>
+      <div class="card-head"><h2>Apps</h2><span class="sub">focus time in range · click an app for its windows</span></div>
       <div class="scroll" id="apps"></div>
     </section>
     <section class="card">
@@ -227,12 +250,13 @@ summary { cursor: pointer; color: var(--text-2); font-size: 13px; }
     </section>
   </div>
 
-  <section class="card">
+  <section class="card" id="log-card">
     <div class="card-head">
-      <h2>Event log</h2><span class="sub">raw events, newest first</span>
+      <h2>Event log</h2><span class="sub">raw events, newest first · click a row for details</span>
       <div class="right log-controls">
+        <span class="chip" id="log-app" hidden><span id="log-app-name"></span><button id="log-app-clear" title="Show every app" aria-label="Clear app filter">×</button></span>
         <select id="log-source" aria-label="Source"></select>
-        <input type="search" id="log-q" placeholder="Search titles" aria-label="Search">
+        <input type="search" id="log-q" placeholder="Search titles and data" aria-label="Search">
       </div>
     </div>
     <div class="scroll"><table id="log"><thead><tr><th>Time</th><th>Source</th><th>Kind</th><th>App</th><th>Title</th></tr></thead><tbody></tbody></table></div>
@@ -347,7 +371,10 @@ const appColor = (app) => appSlot.has(app) ? css(`--s${appSlot.get(app) + 1}`) :
 const appName = (app) => app.replace(/\.exe$/i, "");
 
 // ---------- state ----------
-const state = { from: null, to: null, data: null, dayData: null, heat: "focus", day: null, log: { rows: [], done: false } };
+const state = {
+  from: null, to: null, data: null, dayData: null, heat: "focus", day: null,
+  log: { rows: [], done: false, gen: 0 }, logApp: null, openApps: new Set(), busy: false, updated: 0,
+};
 
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
@@ -355,11 +382,37 @@ function readHash() {
   state.to = p.get("to") || today;
   state.from = p.get("from") || addDays(state.to, -6);
   state.day = p.get("day");
+  state.logApp = p.get("app");
 }
 function writeHash() {
   const p = new URLSearchParams({ from: state.from, to: state.to });
   if (state.day) p.set("day", state.day);
+  if (state.logApp) p.set("app", state.logApp);
   history.replaceState(null, "", "#" + p);
+}
+
+// Clicks and Enter/Space do the same thing, so every drill-down works from the keyboard too.
+function activate(node, fn) {
+  node.classList.add("clickable");
+  if (!node.hasAttribute("tabindex")) node.setAttribute("tabindex", "0");
+  node.addEventListener("click", fn);
+  node.addEventListener("keydown", (e) => {
+    if (e.target === node && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); fn(e); }
+  });
+}
+
+// Opens one day of the range in the timeline, from a chart click.
+function selectDay(date) {
+  if (!state.data || !state.data.days.some((d) => d.date === date)) return;
+  hideTip();
+  if (date !== state.day) {
+    state.day = date;
+    $("#day-pick").value = date;
+    renderPerDay(state.data);
+    renderHeatmap(state.data);
+    loadDay();
+  }
+  $("#timeline-card").scrollIntoView({ behavior: "smooth", block: "nearest" });
 }
 
 function setPreset(preset) {
@@ -392,28 +445,59 @@ async function getJson(url) {
   return res.json();
 }
 
+async function fetchRange() {
+  const data = await getJson(`/api/range?from=${state.from}&to=${state.to}`);
+  state.data = data;
+  const days = data.days.map((d) => d.date);
+  if (!state.day || !days.includes(state.day)) {
+    const withData = data.days.filter((d) => d.activeMs > 0 || Object.keys(d.events).length > 0);
+    state.day = (withData.length ? withData[withData.length - 1] : data.days[data.days.length - 1]).date;
+  }
+  assignColors(data.apps.slice(0, SLOTS).map((a) => a.app));
+  renderAll();
+  fillDayPicker(days);
+}
+
+function stamp() {
+  state.updated = Date.now();
+  $("#updated").textContent = `Updated ${clock(state.updated)}`;
+}
+
 async function load() {
   markPreset();
   writeHash();
+  state.busy = true;
   document.body.classList.add("loading");
   $("#error").replaceChildren();
   try {
-    const data = await getJson(`/api/range?from=${state.from}&to=${state.to}`);
-    state.data = data;
-    assignColors(data.apps.slice(0, SLOTS).map((a) => a.app));
-    renderAll();
-    const days = data.days.map((d) => d.date);
-    if (!state.day || !days.includes(state.day)) {
-      const withData = data.days.filter((d) => d.activeMs > 0 || Object.keys(d.events).length > 0);
-      state.day = (withData.length ? withData[withData.length - 1] : data.days[data.days.length - 1]).date;
-    }
-    fillDayPicker(days);
+    await fetchRange();
     await loadDay();
     resetLog();
+    stamp();
   } catch (err) {
     $("#error").replaceChildren(el("div", { class: "card error", text: `Could not load data: ${err.message}` }));
   } finally {
+    state.busy = false;
     document.body.classList.remove("loading");
+  }
+}
+
+// Auto-refresh: redraws in place and adds new events on top of the log, so open rows,
+// the scroll position and loaded log pages all stay where they are.
+async function quietRefresh() {
+  if (state.busy) return;
+  state.busy = true;
+  try {
+    hideTip(); // the node under the pointer is about to be replaced
+    await fetchRange();
+    renderTimeline(await getJson(`/api/day?date=${state.day}`));
+    await loadNewLog();
+    $("#error").replaceChildren();
+    stamp();
+  } catch (err) {
+    $("#error").replaceChildren(el("div", { class: "card error", text: `Could not refresh: ${err.message}` }));
+  } finally {
+    state.busy = false;
   }
 }
 
@@ -503,10 +587,14 @@ function renderPerDay(d) {
   }
   const labelW = d.days.length > 14 ? 40 : 52;
   const every = Math.ceil(d.days.length / Math.max(1, Math.floor(iw / labelW)));
+  const multi = d.days.length > 1;
   d.days.forEach((day, i) => {
     const cx = m.l + band * i + band / 2;
-    if (i % every === 0)
-      root.append(svg("text", { x: cx, y: H - 8, "text-anchor": "middle",
+    const picked = multi && day.date === state.day;
+    if (picked)
+      root.append(svg("rect", { x: m.l + band * i + 1, y: m.t, width: Math.max(1, band - 2), height: ih, rx: 4, fill: css("--wash") }));
+    if (i % every === 0 || picked)
+      root.append(svg("text", { x: cx, y: H - 8, "text-anchor": "middle", style: picked ? "fill: var(--text); font-weight: 600" : null,
         text: d.days.length > 14 ? dayLabel(day.date, { day: "numeric", month: "numeric" }) : dayLabel(day.date, { weekday: "short", day: "numeric" }) }));
     const segs = keys.filter((k) => day.apps[k] > 0).map((k) => ({ k, v: day.apps[k] }));
     let acc = 0;
@@ -524,7 +612,9 @@ function renderPerDay(d) {
     });
     const hit = svg("rect", { x: m.l + band * i, y: m.t, width: band, height: ih, fill: "transparent" });
     hover(hit, (e) => showTip(e, `${dayLabel(day.date)} · ${dur(day.activeMs)}`,
-      segs.slice().reverse().map((s) => ({ value: dur(s.v), label: s.k === "Other" ? "Other" : appName(s.k), color: s.k === "Other" ? css("--other") : appColor(s.k) }))));
+      segs.slice().reverse().map((s) => ({ value: dur(s.v), label: s.k === "Other" ? "Other" : appName(s.k), color: s.k === "Other" ? css("--other") : appColor(s.k) })),
+      multi ? "Click to open this day's timeline" : null));
+    if (multi) activate(hit, () => selectDay(day.date));
     root.append(hit);
   });
   host.append(root);
@@ -564,16 +654,24 @@ function renderHeatmap(d) {
   for (let h = 0; h < 24; h += (cw < 22 ? 3 : 2))
     root.append(svg("text", { x: m.l + h * cw + 1, y: 11, text: pad(h) }));
   const labelEvery = Math.ceil(grid.length / Math.floor(320 / 13));
+  const multi = grid.length > 1;
   grid.forEach((row, i) => {
     const date = d.days[i].date;
-    if (i % labelEvery === 0)
-      root.append(svg("text", { x: m.l - 8, y: m.t + i * ch + ch / 2 + 4, "text-anchor": "end", text: dayLabel(date, { weekday: "short", day: "numeric" }) }));
+    const picked = multi && date === state.day;
+    if (i % labelEvery === 0 || picked)
+      root.append(svg("text", { x: m.l - 8, y: m.t + i * ch + ch / 2 + 4, "text-anchor": "end", style: picked ? "fill: var(--text); font-weight: 600" : null,
+        text: dayLabel(date, { weekday: "short", day: "numeric" }) }));
     row.forEach((v, h) => {
       const cell = svg("rect", { x: m.l + h * cw + 1, y: m.t + i * ch + 1, width: Math.max(1, cw - 2), height: Math.max(1, ch - 2), rx: 2, fill: color(v) });
       hover(cell, (e) => showTip(e, `${dayLabel(date)} · ${pad(h)}:00–${pad((h + 1) % 24)}:00`,
-        [{ value: focus ? `${Math.round(v)} min` : num(v), label: focus ? "focus" : "app events" }]));
+        [{ value: focus ? `${Math.round(v)} min` : num(v), label: focus ? "focus" : "app events" }],
+        multi ? "Click to open this day's timeline" : null));
+      if (multi) activate(cell, () => selectDay(date));
       root.append(cell);
     });
+    if (picked)
+      root.append(svg("rect", { x: m.l, y: m.t + i * ch, width: cw * 24, height: ch, rx: 3, fill: "none",
+        stroke: css("--text-2"), "stroke-width": 1, "pointer-events": "none" }));
   });
   host.append(root);
   const scale = el("span", {}, "less ", ...ramp.filter((_, i) => i % 2 === 0).map((c) => el("i", { style: { background: c } })), " more",
@@ -649,18 +747,41 @@ function renderApps(d) {
   const host = $("#apps");
   if (!d.apps.length) { host.replaceChildren(el("div", { class: "empty", text: "No apps had focus in this range." })); return; }
   const total = d.totals.activeMs, top = d.apps[0].ms;
-  const rows = d.apps.slice(0, 25).map((a) => el("tr", {},
-    el("td", {}, el("span", { class: "dot", style: { background: appColor(a.app) } }), appName(a.app)),
-    el("td", { class: "num" }, el("span", { class: "share", style: { width: Math.max(2, (a.ms / top) * 80) + "px", background: appColor(a.app) } }), dur(a.ms)),
-    el("td", { class: "num", text: Math.round((a.ms / total) * 100) + "%" }),
-    el("td", { class: "num", text: a.blocks || "" }),
-    el("td", { class: "title", text: a.topTitle || "", title: a.topTitle || "" })));
+  const rows = d.apps.slice(0, 25).flatMap((a) => {
+    const open = state.openApps.has(a.app);
+    const tr = el("tr", { class: "expandable" + (open ? " open" : ""), "aria-expanded": String(open) },
+      el("td", {}, el("span", { class: "caret", text: open ? "▾" : "▸" }), el("span", { class: "dot", style: { background: appColor(a.app) } }), appName(a.app)),
+      el("td", { class: "num" }, el("span", { class: "share", style: { width: Math.max(2, (a.ms / top) * 80) + "px", background: appColor(a.app) } }), dur(a.ms)),
+      el("td", { class: "num", text: Math.round((a.ms / total) * 100) + "%" }),
+      el("td", { class: "num", text: a.blocks || "" }),
+      el("td", { class: "title", text: a.topTitle || "", title: a.topTitle || "" }));
+    activate(tr, () => {
+      if (!state.openApps.delete(a.app)) state.openApps.add(a.app);
+      renderApps(state.data);
+      host.querySelector(`tr[data-app="${CSS.escape(a.app)}"]`)?.focus();
+    });
+    tr.dataset.app = a.app;
+    return open ? [tr, el("tr", { class: "detail" }, el("td", { colspan: 5 }, appDetail(a)))] : [tr];
+  });
   const table = el("table", {},
     el("thead", {}, el("tr", {}, el("th", { text: "App" }), el("th", { class: "num", text: "Time" }), el("th", { class: "num", text: "Share" }),
       el("th", { class: "num", text: "Blocks", title: "Stretches of a minute or more" }), el("th", { text: "Most-used window" }))),
     el("tbody", {}, ...rows));
   const extra = d.apps.length > 25 ? el("div", { class: "empty", text: `+ ${d.apps.length - 25} more apps, ${dur(d.apps.slice(25).reduce((s, a) => s + a.ms, 0))} in total` }) : null;
   host.replaceChildren(table, extra || "");
+}
+
+function appDetail(a) {
+  const box = el("div", {});
+  box.append(el("h3", { style: { marginTop: "0" }, text: "Windows by focus time" }));
+  const list = el("div", {});
+  if (a.titles.length) barList(list, a.titles.map((t) => ({ name: t.title, n: t.ms })), { fmt: (v) => dur(v), note: () => "focus" });
+  else list.append(el("div", { class: "empty", text: "No window titles recorded for this app." }));
+  box.append(list);
+  const show = el("button", { class: "iconbtn", text: `Show ${appName(a.app)} events in the log` });
+  show.addEventListener("click", () => setLogApp(a.app));
+  box.append(el("div", { class: "detail-actions" }, show));
+  return box;
 }
 
 // ---------- small multiples per source ----------
@@ -684,7 +805,9 @@ function renderMultiples(d) {
       const h = (v / max) * (H - 4);
       if (h > 0) root.append(svg("path", { d: topRounded(i * band + (band - bw) / 2, H - 1 - h, bw, h, Math.min(3, bw / 2)), fill: css("--s1") }));
       const hit = svg("rect", { x: i * band, y: 0, width: band, height: H, fill: "transparent" });
-      hover(hit, (e) => showTip(e, byHour ? `${pad(i)}:00–${pad((i + 1) % 24)}:00` : dayLabel(d.days[i].date), [{ value: num(v), label: `${sourceName(s)} events` }]));
+      hover(hit, (e) => showTip(e, byHour ? `${pad(i)}:00–${pad((i + 1) % 24)}:00` : dayLabel(d.days[i].date), [{ value: num(v), label: `${sourceName(s)} events` }],
+        byHour ? null : "Click to open this day's timeline"));
+      if (!byHour) activate(hit, () => selectDay(d.days[i].date));
       root.append(hit);
     });
     box.append(root);
@@ -770,23 +893,90 @@ function fillLogSources(sources) {
   sel.replaceChildren(el("option", { value: "all", text: "All but processes" }), ...all.map((s) => el("option", { value: s, text: sourceName(s) })));
   sel.value = all.includes(current) ? current : "all";
 }
-function resetLog() { state.log = { rows: [], done: false }; $("#log tbody").replaceChildren(); loadLog(); }
+function setLogApp(app) {
+  state.logApp = app;
+  writeHash();
+  showLogApp();
+  resetLog();
+  if (app) $("#log-card").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+function showLogApp() {
+  $("#log-app").hidden = !state.logApp;
+  $("#log-app-name").textContent = state.logApp ? `App: ${appName(state.logApp)}` : "";
+}
+
+// Each reset bumps the generation, so a slow answer for an old filter is dropped, not appended.
+function resetLog() {
+  state.log = { rows: [], done: false, gen: state.log.gen + 1 };
+  $("#log tbody").replaceChildren();
+  loadLog();
+}
+function logParams(extra) {
+  const p = new URLSearchParams({ from: state.from, to: state.to, source: $("#log-source").value || "all", q: $("#log-q").value, ...extra });
+  if (state.logApp) p.set("app", state.logApp);
+  return p;
+}
 async function loadLog() {
-  const before = state.log.rows.length ? state.log.rows[state.log.rows.length - 1].id : "";
-  const p = new URLSearchParams({ from: state.from, to: state.to, source: $("#log-source").value || "all", q: $("#log-q").value, limit: 100 });
-  if (before) p.set("before", before);
-  const rows = await getJson(`/api/events?${p}`);
+  const gen = state.log.gen;
+  const extra = { limit: 100 };
+  if (state.log.rows.length) extra.before = state.log.rows[state.log.rows.length - 1].id;
+  const rows = await getJson(`/api/events?${logParams(extra)}`);
+  if (gen !== state.log.gen) return;
   state.log.rows.push(...rows);
   state.log.done = rows.length < 100;
+  $("#log tbody").append(...rows.map(logRow));
+  if (!state.log.rows.length) $("#log tbody").append(el("tr", { class: "no-rows" }, el("td", { colspan: 5, class: "empty", text: "No events match." })));
+  $("#log-more").hidden = state.log.done;
+}
+// Events recorded since the log was loaded go on top; a flood of them just reloads the log.
+async function loadNewLog() {
+  const newest = state.log.rows[0]?.id;
+  if (newest == null) { resetLog(); return; }
+  const gen = state.log.gen;
+  const rows = await getJson(`/api/events?${logParams({ after: newest, limit: 500 })}`);
+  if (gen !== state.log.gen || !rows.length) return;
+  if (rows.length >= 500) { resetLog(); return; }
+  state.log.rows.unshift(...rows);
+  $("#log tbody").prepend(...rows.map(logRow));
+}
+
+function logRow(r) {
   const multiDay = state.from !== state.to;
-  $("#log tbody").append(...rows.map((r) => el("tr", {},
-    el("td", { class: "time", text: multiDay ? `${dayLabel(isoDay(new Date(r.ts)), { day: "numeric", month: "short" })} ${clock(r.ts)}` : clock(r.ts) }),
+  const tr = el("tr", { class: "expandable", "aria-expanded": "false" },
+    el("td", { class: "time" }, el("span", { class: "caret", text: "▸" }),
+      multiDay ? `${dayLabel(isoDay(new Date(r.ts)), { day: "numeric", month: "short" })} ${clock(r.ts)}` : clock(r.ts)),
     el("td", { text: sourceName(r.source) }),
     el("td", { text: r.kind }),
     el("td", { text: r.app ? appName(r.app) : "" }),
-    el("td", { class: "title", text: r.title || "", title: r.title || "" }))));
-  if (!state.log.rows.length) $("#log tbody").append(el("tr", {}, el("td", { colspan: 5, class: "empty", text: "No events match." })));
-  $("#log-more").hidden = state.log.done;
+    el("td", { class: "title", text: r.title || "", title: r.title || "" }));
+  activate(tr, () => {
+    const open = tr.classList.toggle("open");
+    tr.setAttribute("aria-expanded", String(open));
+    tr.querySelector(".caret").textContent = open ? "▾" : "▸";
+    if (open) tr.after(el("tr", { class: "detail" }, el("td", { colspan: 5 }, eventDetail(r))));
+    else if (tr.nextElementSibling?.classList.contains("detail")) tr.nextElementSibling.remove();
+  });
+  return tr;
+}
+
+function eventDetail(r) {
+  const kv = el("dl", { class: "kv" });
+  const add = (k, v) => {
+    const dd = el("dd", {});
+    // Only web addresses become links; everything else stays plain text.
+    if (typeof v === "string" && /^https?:\/\//i.test(v)) dd.append(el("a", { href: v, target: "_blank", rel: "noopener noreferrer", text: v }));
+    else dd.textContent = v == null ? "null" : typeof v === "object" ? JSON.stringify(v, null, 2) : String(v);
+    kv.append(el("dt", { text: k }), dd);
+  };
+  add("time", new Date(r.ts).toLocaleString());
+  if (r.app) add("app", r.app);
+  if (r.title) add("title", r.title);
+  let data = null;
+  if (r.data) { try { data = JSON.parse(r.data); } catch { data = r.data; } }
+  if (data && typeof data === "object" && !Array.isArray(data)) for (const [k, v] of Object.entries(data)) add(k, v);
+  else if (data != null) add("data", data);
+  add("event id", r.id);
+  return kv;
 }
 
 // ---------- wiring ----------
@@ -804,8 +994,26 @@ $("#heat-mode").addEventListener("click", (e) => {
   for (const x of document.querySelectorAll("#heat-mode button")) x.setAttribute("aria-pressed", String(x === b));
   if (state.data) renderHeatmap(state.data);
 });
-$("#day-pick").addEventListener("change", (e) => { state.day = e.target.value; loadDay(); });
+$("#day-pick").addEventListener("change", (e) => {
+  state.day = e.target.value;
+  if (state.data) { renderPerDay(state.data); renderHeatmap(state.data); }
+  loadDay();
+});
 $("#log-source").addEventListener("change", resetLog);
+$("#log-app-clear").addEventListener("click", () => setLogApp(null));
+$("#refresh").addEventListener("click", () => { if (!state.busy) load(); });
+
+// Auto-refresh only matters while the range reaches today, and only for a tab someone can see.
+const live = () => state.to >= isoDay(new Date());
+try { $("#auto").checked = localStorage.getItem("watchme-auto") === "1"; } catch {}
+$("#auto").addEventListener("change", () => {
+  try { localStorage.setItem("watchme-auto", $("#auto").checked ? "1" : "0"); } catch {}
+  if ($("#auto").checked && live()) quietRefresh();
+});
+setInterval(() => { if ($("#auto").checked && live() && document.visibilityState === "visible") quietRefresh(); }, 60_000);
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && $("#auto").checked && live() && Date.now() - state.updated > 60_000) quietRefresh();
+});
 let qTimer;
 $("#log-q").addEventListener("input", () => { clearTimeout(qTimer); qTimer = setTimeout(resetLog, 250); });
 $("#log-more").addEventListener("click", loadLog);
@@ -829,6 +1037,7 @@ let resizeTimer;
 addEventListener("resize", () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(rerender, 150); });
 
 readHash();
+showLogApp();
 load();
 </script>
 </body>

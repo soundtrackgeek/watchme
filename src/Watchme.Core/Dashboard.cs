@@ -20,7 +20,13 @@ public static class Dashboard
 
     public sealed record Day(string Date, long ActiveMs, Dictionary<string, long> Apps, Dictionary<string, int> Events);
 
-    public sealed record AppRow(string App, long Ms, int Blocks, string? TopTitle);
+    /// <summary>An app's focus time in the range; <see cref="Titles"/> are its window titles by time, longest first.</summary>
+    public sealed record AppRow(string App, long Ms, int Blocks, string? TopTitle, List<TitleTime> Titles);
+
+    public sealed record TitleTime(string Title, long Ms);
+
+    /// <summary>Window titles kept per app for the Apps table's drill-down.</summary>
+    public const int TitlesPerApp = 8;
 
     public sealed record Count(string Name, int N, double Value = 0);
 
@@ -44,7 +50,8 @@ public static class Dashboard
 
     public sealed record DayDetail(string Date, long ActiveMs, List<TimelineBlock> Blocks, List<long[]> Idle, List<string> Activity);
 
-    public sealed record EventRow(long Id, long Ts, string Source, string Kind, string? App, string? Title);
+    /// <summary>One raw event; <see cref="Data"/> is the event's JSON exactly as stored.</summary>
+    public sealed record EventRow(long Id, long Ts, string Source, string Kind, string? App, string? Title, string? Data);
 
     private sealed record Ev(long Ts, string Source, string Kind, string? App, string? Title, JsonObject? Data);
 
@@ -81,12 +88,20 @@ public static class Dashboard
 
         var blocks = DailyReport.BuildBlocks(spans, DailyReport.MergeGapMs);
         var appRows = spans.GroupBy(s => s.App, StringComparer.OrdinalIgnoreCase)
-            .Select(g => new AppRow(
-                g.Key,
-                g.Sum(s => s.DurationMs),
-                blocks.Count(b => string.Equals(b.App, g.Key, StringComparison.OrdinalIgnoreCase) && b.ActiveMs >= 60_000),
-                g.Where(s => !string.IsNullOrEmpty(s.Title)).GroupBy(s => s.Title)
-                    .MaxBy(t => t.Sum(s => s.DurationMs))?.Key))
+            .Select(g =>
+            {
+                var titles = g.Where(s => !string.IsNullOrEmpty(s.Title)).GroupBy(s => s.Title!)
+                    .Select(t => new TitleTime(t.Key, t.Sum(s => s.DurationMs)))
+                    .OrderByDescending(t => t.Ms)
+                    .Take(TitlesPerApp)
+                    .ToList();
+                return new AppRow(
+                    g.Key,
+                    g.Sum(s => s.DurationMs),
+                    blocks.Count(b => string.Equals(b.App, g.Key, StringComparison.OrdinalIgnoreCase) && b.ActiveMs >= 60_000),
+                    titles.FirstOrDefault()?.Title,
+                    titles);
+            })
             .OrderByDescending(a => a.Ms)
             .ToList();
 
@@ -205,8 +220,12 @@ public static class Dashboard
     /// <summary>
     /// Raw events, newest first, for the event log table. <paramref name="source"/> "all" means
     /// every source but process start and exit, which would drown everything else.
+    /// <paramref name="query"/> matches the title, app, kind and the event's JSON data (URLs,
+    /// commands, folders, artists); <paramref name="app"/> keeps one app's events.
+    /// <paramref name="afterId"/> returns only events newer than that row, for adding new ones on top.
     /// </summary>
-    public static List<EventRow> Events(Database db, long fromMs, long toMs, string? source, string? query, long? beforeId, int limit)
+    public static List<EventRow> Events(Database db, long fromMs, long toMs, string? source, string? query, long? beforeId, int limit,
+        string? app = null, long? afterId = null)
     {
         using var cmd = db.Connection.CreateCommand();
         var where = new List<string> { "ts >= $from", "ts < $to" };
@@ -219,18 +238,28 @@ public static class Dashboard
         }
         if (!string.IsNullOrWhiteSpace(query))
         {
-            where.Add("(title LIKE $q ESCAPE '\\' OR app LIKE $q ESCAPE '\\' OR kind LIKE $q ESCAPE '\\')");
+            where.Add("(title LIKE $q ESCAPE '\\' OR app LIKE $q ESCAPE '\\' OR kind LIKE $q ESCAPE '\\' OR data LIKE $q ESCAPE '\\')");
             var escaped = query.Trim().Replace("\\", "\\\\").Replace("%", "\\%").Replace("_", "\\_");
             cmd.Parameters.AddWithValue("$q", $"%{escaped}%");
+        }
+        if (!string.IsNullOrWhiteSpace(app))
+        {
+            where.Add("app = $app COLLATE NOCASE");
+            cmd.Parameters.AddWithValue("$app", app);
         }
         if (beforeId is { } id)
         {
             where.Add("id < $before");
             cmd.Parameters.AddWithValue("$before", id);
         }
+        if (afterId is { } after)
+        {
+            where.Add("id > $after");
+            cmd.Parameters.AddWithValue("$after", after);
+        }
         // Ordered by id, not ts: scrapers insert history late, but paging needs a stable key.
         cmd.CommandText = $"""
-            SELECT id, ts, source, kind, app, title FROM events
+            SELECT id, ts, source, kind, app, title, data FROM events
             WHERE {string.Join(" AND ", where)}
             ORDER BY id DESC LIMIT $limit;
             """;
@@ -242,7 +271,8 @@ public static class Dashboard
         using var r = cmd.ExecuteReader();
         while (r.Read())
             rows.Add(new EventRow(r.GetInt64(0), r.GetInt64(1), r.GetString(2), r.GetString(3),
-                r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5)));
+                r.IsDBNull(4) ? null : r.GetString(4), r.IsDBNull(5) ? null : r.GetString(5),
+                r.IsDBNull(6) ? null : r.GetString(6)));
         return rows;
     }
 

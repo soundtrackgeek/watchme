@@ -4,6 +4,24 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.18.0] - 2026-11-23
+
+### Added
+
+- Dashboard: click a day in *Focus time per day*, *When* or *Activity in apps* to open it in the
+  day timeline; the chosen day is highlighted in the charts.
+- Dashboard: click an app in the Apps table to see its window titles by focus time, and to show
+  only that app's events in the event log (an app chip in the log clears the filter).
+- Dashboard: click an event log row to see everything recorded with it (URL, command, folder,
+  album, prompt and so on); web addresses open as links.
+- Dashboard: a Refresh button, and an Auto option that refreshes every minute while the range
+  includes today, adding new events to the top of the log.
+
+### Changed
+
+- Dashboard: the event log search also matches each event's data, not only its title, app and
+  kind. The app filter is kept in the address with the range and day.
+
 ## [0.17.1] - 2026-11-23
 
 ### Fixed

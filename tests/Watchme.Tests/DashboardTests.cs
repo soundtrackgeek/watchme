@@ -131,6 +131,43 @@ public class DashboardTests
         Assert.Equal("100% done", Assert.Single(Dashboard.Events(db, from, to, "all", "0%", null, 50)).Title);
     }
 
+    [Fact]
+    public void Event_log_returns_data_searches_it_and_filters_by_app()
+    {
+        using var db = Database.Open(":memory:");
+        db.Insert([
+            new(At(9), EventSources.PowerShell, "command") { App = "pwsh.exe", Title = "build", Data = """{"cmd":"dotnet build","cwd":"C:\\code"}""" },
+            new(At(9, 1), EventSources.Edge, "visit") { App = "msedge.exe", Title = "Rate Your Music", Data = """{"host":"rateyourmusic.com"}""" },
+            Focus(At(9, 2), "MSEdge.exe"),
+        ]);
+        long from = At(0), to = At(0, dayOffset: 1);
+
+        var hit = Assert.Single(Dashboard.Events(db, from, to, "all", "dotnet", null, 50));
+        Assert.Equal("""{"cmd":"dotnet build","cwd":"C:\\code"}""", hit.Data);
+        Assert.Equal(2, Dashboard.Events(db, from, to, "all", null, null, 50, app: "msedge.exe").Count);
+        Assert.Equal(EventSources.Edge, Assert.Single(Dashboard.Events(db, from, to, "edge", null, null, 50, app: "msedge.exe")).Source);
+        var oldest = Dashboard.Events(db, from, to, "all", null, null, 50)[^1];
+        Assert.Equal(2, Dashboard.Events(db, from, to, "all", null, null, 50, afterId: oldest.Id).Count);
+    }
+
+    [Fact]
+    public void Apps_list_their_window_titles_by_time()
+    {
+        using var db = Database.Open(":memory:");
+        db.Insert([
+            new WatchEvent(At(8), EventSources.Agent, "start"),
+            Focus(At(8), "Code.exe", "a.cs"),
+            Focus(At(8, 10), "Code.exe", "b.cs"),
+            Focus(At(8, 40), "Code.exe", "a.cs"),
+            new WatchEvent(At(8, 45), EventSources.Agent, "stop"),
+        ]);
+
+        var app = Assert.Single(Dashboard.Build(db, Day, Day).Apps);
+
+        Assert.Equal("b.cs", app.TopTitle);
+        Assert.Equal([("b.cs", 30 * Min), ("a.cs", 15 * Min)], app.Titles.Select(t => (t.Title, t.Ms)));
+    }
+
     [Theory]
     [InlineData("git push", "git")]
     [InlineData(@".\watchme.exe report", "watchme")]
