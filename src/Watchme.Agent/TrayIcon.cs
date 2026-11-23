@@ -359,7 +359,8 @@ internal sealed class TrayIcon : IDisposable
         var answer = MessageBox.Show(
             "Stop recording?\n\nWatchme starts again at your next logon, or with 'watchme start'.",
             "Quit Watchme", MessageBoxButtons.OKCancel, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2);
-        if (answer == DialogResult.OK)
+        // The agent may have stopped while the dialog was open (watchme stop, watchme update).
+        if (answer == DialogResult.OK && Volatile.Read(ref _disposed) == 0)
             _quit();
     }
 
@@ -453,7 +454,11 @@ internal sealed class TrayIcon : IDisposable
             try
             {
                 if (_dashboard is { HasExited: false })
+                {
+                    // Kill only asks Windows to end it. Wait, so `watchme update` finds watchme.exe free.
                     _dashboard.Kill();
+                    _dashboard.WaitForExit(TimeSpan.FromSeconds(2));
+                }
             }
             catch (Exception ex) when (ex is InvalidOperationException or System.ComponentModel.Win32Exception) { }
             _dashboard?.Dispose();
@@ -461,7 +466,14 @@ internal sealed class TrayIcon : IDisposable
         }
         if (_ui is { } ui)
         {
-            ui.Post(_ => Application.ExitThread(), null);
+            ui.Post(_ =>
+            {
+                // Hide the icon first: if a dialog (Quit's) is open, its loop runs this but the
+                // thread's loop only ends when the dialog closes, and the process won't wait.
+                if (_notify is not null)
+                    _notify.Visible = false;
+                Application.ExitThread();
+            }, null);
             _thread.Join(TimeSpan.FromSeconds(2));
         }
     }

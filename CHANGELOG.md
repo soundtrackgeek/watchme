@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.23.1] - 2026-11-23
+
+### Fixed
+
+- When the agent stops (`watchme stop`, `watchme update`), it waits for the dashboard the tray
+  icon started to exit, so the update never finds `watchme.exe` in use.
+- The tray icon disappears when the agent stops even while its *Quit Watchme* dialog is open.
+
 ## [0.23.0] - 2026-11-23
 
 ### Added
