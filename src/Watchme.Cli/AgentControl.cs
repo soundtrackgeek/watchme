@@ -67,7 +67,9 @@ internal static class AgentControl
             return 0;
         }
         EnsureAgentExists();
-        Process.Start(new ProcessStartInfo(AgentPath) { UseShellExecute = false, CreateNoWindow = true });
+        // Through the shell, so the long-running agent inherits none of our handles: with
+        // UseShellExecute = false it kept a redirected stdout open and the caller never saw EOF.
+        Process.Start(new ProcessStartInfo(AgentPath) { UseShellExecute = true });
 
         for (var i = 0; i < 50 && !IsRunning(); i++)
             Thread.Sleep(100);

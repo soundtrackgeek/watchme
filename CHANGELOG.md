@@ -4,6 +4,14 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.17.1] - 2026-11-23
+
+### Fixed
+
+- `watchme start` and `watchme update` no longer hang when their output is piped or captured (a
+  script, a scheduled task): the agent was started with Watchme's output handles and kept them
+  open.
+
 ## [0.17.0] - 2026-11-23
 
 ### Added
