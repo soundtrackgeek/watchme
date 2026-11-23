@@ -41,14 +41,19 @@ internal sealed class EdgeHistoryScraper(string userDataDir, Func<IReadOnlyList<
     public IReadOnlyList<WatchEvent> Scrape(ScrapeContext context)
     {
         if (!Directory.Exists(userDataDir))
+        {
+            context.Warn($"no Edge user data folder at {userDataDir}");
             return [];
+        }
 
         var events = new List<WatchEvent>();
+        var profiles = 0;
         foreach (var profileDir in Directory.EnumerateDirectories(userDataDir))
         {
             var history = Path.Combine(profileDir, "History");
             if (!File.Exists(history))
                 continue;
+            profiles++;
             var profile = Path.GetFileName(profileDir);
             var modified = File.GetLastWriteTimeUtc(history);
             // A copy of 30 MB is only worth making when Edge wrote something.
@@ -69,6 +74,8 @@ internal sealed class EdgeHistoryScraper(string userDataDir, Func<IReadOnlyList<
                 TryDelete(snapshot + "-journal");
             }
         }
+        if (profiles == 0)
+            context.Warn($"no Edge profile with a History file in {userDataDir}");
         return events;
     }
 

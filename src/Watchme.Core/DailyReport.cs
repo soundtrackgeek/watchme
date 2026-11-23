@@ -152,6 +152,9 @@ public static class DailyReport
 
         var active = spans.Sum(s => s.DurationMs);
         output.WriteLine($"Active  {Duration(active)}   (first {Time(spans[0].Start)}, last {Time(spans[^1].End)})");
+        var paused = PauseState.Windows(db, from, to);
+        if (paused.Count > 0)
+            output.WriteLine($"Paused  {string.Join(", ", paused.Select(w => $"{Time(Math.Max(w.Start, from))}–{Time(Math.Min(w.End, to))}"))}   (nothing recorded)");
         output.WriteLine();
 
         output.WriteLine("Apps");

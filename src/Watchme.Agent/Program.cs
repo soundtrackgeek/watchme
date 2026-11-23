@@ -54,8 +54,9 @@ namespace Watchme.Agent
             });
             Log.Info($"Started v{version}, pid {Environment.ProcessId}, db {Paths.Database}");
 
-            var focus = new FocusTracker(new Win32DesktopProbe(), config, writer.Post);
-            var processes = new ProcessTracker(config, writer.Post);
+            var pause = new PauseMonitor(PauseState.FilePath, writer.Post);
+            var focus = new FocusTracker(new Win32DesktopProbe(), config, writer.Post) { IsPaused = pause.IsPaused };
+            var processes = new ProcessTracker(config, writer.Post) { IsPaused = pause.IsPaused };
             using var session = new SessionTracker(focus, writer.Post, RequestStopAndWait);
 
             var scrapers = new List<IScraper>();
@@ -109,7 +110,7 @@ namespace Watchme.Agent
             if (config.ForeverEnabled)
                 scrapers.Add(new ActivityLogScraper(EventSources.Forever, "forever.exe",
                     Path.Combine(AppDataDir(config.ForeverDataDir, "com.soundtrackgeek.forever"), "logs"), config.ScrapeBackfillDays));
-            var scraperHost = new ScraperHost(scrapers, Paths.Database, writer.Post);
+            var scraperHost = new ScraperHost(scrapers, Paths.Database, PauseState.FilePath, writer.Post);
 
             var collectors = new[]
             {

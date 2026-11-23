@@ -37,7 +37,10 @@ internal sealed class MusicLibraryScraper(string libraryDb, int backfillDays) : 
     public IReadOnlyList<WatchEvent> Scrape(ScrapeContext context)
     {
         if (!File.Exists(libraryDb))
+        {
+            context.Warn($"no Music Library catalog at {libraryDb}");
             return [];
+        }
         using var db = AuroraScraper.OpenReadOnly(libraryDb);
         return [.. Ratings(db, context), .. AlbumUpdates(db, context, "new", "album_added", "Added"),
                 .. AlbumUpdates(db, context, "removed", "album_removed", "Removed"), .. TagChanges(db, context)];

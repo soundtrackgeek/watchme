@@ -33,7 +33,10 @@ internal sealed class PowerShellScraper(string inbox, int backfillDays) : IScrap
     public IReadOnlyList<WatchEvent> Scrape(ScrapeContext context)
     {
         if (!Directory.Exists(inbox))
+        {
+            context.Warn("no commands logged yet; run 'watchme powershell install' to log them");
             return [];
+        }
 
         var cursor = context.Cursor(Source, Kind, "end_ts");
         var from = cursor is { } c ? c - LookbackMs : context.Now - backfillDays * 24L * 60 * 60 * 1000;

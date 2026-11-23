@@ -16,6 +16,9 @@ internal sealed class ProcessTracker(WatchmeConfig config, Action<WatchEvent> em
     private readonly uint? _session = Native.GetSessionId((uint)Environment.ProcessId);
     private bool _baselineTaken;
 
+    /// <summary>Whether <c>watchme pause</c> is in effect; processes are still followed, just not recorded.</summary>
+    internal Func<long, bool> IsPaused { get; init; } = _ => false;
+
     public async Task RunAsync(CancellationToken ct)
     {
         using var timer = new PeriodicTimer(TimeSpan.FromSeconds(Math.Max(1, config.ProcessPollSeconds)));
@@ -40,6 +43,7 @@ internal sealed class ProcessTracker(WatchmeConfig config, Action<WatchEvent> em
 
     private void Poll()
     {
+        var quiet = IsPaused(Clock.NowMs());
         var snapshot = Native.SnapshotProcesses();
         var names = snapshot.ToDictionary(p => p.Pid, p => p.Name);
         var seen = new HashSet<uint>();
@@ -60,7 +64,7 @@ internal sealed class ProcessTracker(WatchmeConfig config, Action<WatchEvent> em
             _known[p.Pid] = known;
 
             // The first snapshot is what was already running when the agent started; not "opened now".
-            if (!_baselineTaken)
+            if (!_baselineTaken || quiet)
                 continue;
 
             var data = JsonSerializer.Serialize(new
@@ -80,6 +84,8 @@ internal sealed class ProcessTracker(WatchmeConfig config, Action<WatchEvent> em
         foreach (var (pid, known) in _known.Where(kv => !seen.Contains(kv.Key)).ToList())
         {
             _known.Remove(pid);
+            if (quiet)
+                continue;
             var now = Clock.NowMs();
             var data = known.CreatedMs is { } c
                 ? JsonSerializer.Serialize(new { runtime_s = (now - c) / 1000 })

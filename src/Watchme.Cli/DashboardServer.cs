@@ -115,6 +115,19 @@ internal static class DashboardServer
             return Results.Json(rows, Json);
         });
 
+        app.MapGet("/api/status", () =>
+        {
+            using var db = Database.Open(Paths.Database);
+            var report = AgentHealth.Build(db, AgentControl.IsRunning(), Clock.NowMs(), PauseState.FilePath);
+            return Results.Json(new
+            {
+                report.Running,
+                report.LastAlive,
+                report.Pause,
+                Problems = report.Problems.Select(p => new { p.Source, p.Name, Level = p.Level.ToString().ToLowerInvariant(), p.Message }),
+            }, Json);
+        });
+
         var url = $"http://127.0.0.1:{port}/";
         try
         {

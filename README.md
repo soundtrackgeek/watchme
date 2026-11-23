@@ -278,7 +278,9 @@ watchme start
 ```text
 watchme report [DAY|RANGE]                    Summary of a day (default: today) or several days
 watchme search WORDS... [options]             Find events in the whole history
-watchme status                                Is the agent running, and what has it recorded?
+watchme status                                Is the agent running, and is every source working?
+watchme pause [30m|2h|1h30m|14:30]            Record nothing for a while; resumes by itself
+watchme resume                                End a pause early
 watchme start | stop                          Start or stop the background agent
 watchme install | uninstall                   Start at every logon and add to PATH (or undo both)
 watchme update [repo]                         Rebuild from source and replace the installed copy
@@ -332,6 +334,42 @@ with what they logged instead:
 Both happen while you are working in other windows, so neither is added to *Active*. An app with
 background use is listed even when it had little or no focus (`—`), and days without focus time
 get an *In the background* section.
+
+## Is everything being recorded?
+
+`watchme status` shows the agent, the database and a line per source: when the agent last read
+it, when its newest event happened and how many it has from the last 7 days. A source that needs
+a look says why:
+
+```text
+  Source           Last run         Last event         7 days
+  Focus            —                20:03               2,448
+  Edge             20:11            20:03               2,975
+  PowerShell       20:11            20:02                  51
+  Total Commander  20:11            16:07                 507  ! no log file set in wincmd.ini; turn on Total Commander's log under Configuration → Log file
+  Git              20:10            20:01                 231  ✕ failing since 19:40: IOException: …
+```
+
+*Failing* means the last read threw an error (the full error is in `agent.log`); *has not run
+since* means a source stopped being read while the agent runs; the other notes say why a source
+had nothing to read (a missing file, the PowerShell hook not installed). When the agent is
+stopped, status says when it was last seen. The dashboard shows the same problems in a banner at
+the top, along with a stopped agent or a pause.
+
+## Pausing
+
+```powershell
+watchme pause          # 30 minutes
+watchme pause 2h       # or 45 (minutes), 1h30m, or a time: 14:30
+watchme resume         # start again sooner
+```
+
+For screen sharing, banking, or someone else at the keyboard. Nothing is recorded until the pause
+ends, and it ends by itself (at most 24 hours later), so forgetting to turn tracking back on costs
+nothing. It covers more than window focus and processes: what apps log themselves during the
+pause (Edge history, PowerShell commands, plays, file operations) is left out too, even when it
+is read later, and even if the agent wasn't running. Pausing again changes the end time. The
+report and the dashboard's day timeline show when you paused.
 
 ## Several days at once
 
@@ -471,7 +509,8 @@ Set `WATCHME_HOME` to use a different data folder (handy for testing).
 ## Privacy
 
 Everything stays in the local database. Window titles can still contain sensitive text
-(email subjects, document names), so extend the redaction lists to taste.
+(email subjects, document names), so extend the redaction lists to taste, and use
+`watchme pause` for the stretches that shouldn't be recorded at all.
 
 ## Development
 

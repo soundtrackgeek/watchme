@@ -12,6 +12,8 @@ try
         "report" or "today" => Report(args.Skip(1).FirstOrDefault()),
         "search" or "find" => SearchCommand.Run(args.Skip(1).ToArray()),
         "status" => AgentControl.Status(),
+        "pause" => PauseCommand.Pause(args.Skip(1).ToArray()),
+        "resume" or "unpause" => PauseCommand.Resume(),
         "install" => AgentControl.Install(),
         "uninstall" => AgentControl.Uninstall(),
         "start" => AgentControl.Start(),
@@ -65,7 +67,10 @@ static int Help(string? unknown = null)
           watchme search WORDS... [options]             Find events in the whole history (titles, URLs,
                                                         commands, folders, artists, prompts)
                                                         --source S  --days N  --from D  --to D  --limit N
-          watchme status                                Is the agent running, and what has it recorded?
+          watchme status                                Is the agent running, and is every source working?
+          watchme pause [30m|2h|1h30m|14:30]            Record nothing for a while (default 30 minutes),
+                                                        app history included; resumes by itself
+          watchme resume                                End a pause early
           watchme start                                 Start the background agent now
           watchme stop                                  Stop the background agent
           watchme install                               Start the agent at every Windows logon (and now),

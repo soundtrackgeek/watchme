@@ -28,7 +28,10 @@ internal sealed class ActivityLogScraper(string source, string app, string logsD
     public IReadOnlyList<WatchEvent> Scrape(ScrapeContext context)
     {
         if (!Directory.Exists(logsDir))
+        {
+            context.Warn($"no activity log folder at {logsDir} (is {app} installed and up to date?)");
             return [];
+        }
 
         var cursor = context.Cursor(source, null);
         var from = cursor is { } c ? c - LookbackMs : context.Now - backfillDays * 24L * 60 * 60 * 1000;

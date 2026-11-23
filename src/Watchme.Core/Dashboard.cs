@@ -49,7 +49,7 @@ public static class Dashboard
 
     public sealed record TimelineBlock(long Start, long End, string App, long ActiveMs, string? Title);
 
-    public sealed record DayDetail(string Date, long ActiveMs, List<TimelineBlock> Blocks, List<long[]> Idle, List<string> Activity);
+    public sealed record DayDetail(string Date, long ActiveMs, List<TimelineBlock> Blocks, List<long[]> Idle, List<string> Activity, List<long[]> Paused);
 
     /// <summary>One raw event; <see cref="Data"/> is the event's JSON exactly as stored.</summary>
     public sealed record EventRow(long Id, long Ts, string Source, string Kind, string? App, string? Title, string? Data);
@@ -216,7 +216,8 @@ public static class Dashboard
         }
 
         return new DayDetail(day.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture), spans.Sum(s => s.DurationMs),
-            blocks, idle, DailyReport.LoadActivity(db, from, to, spans));
+            blocks, idle, DailyReport.LoadActivity(db, from, to, spans),
+            PauseState.Windows(db, from, to).Select(w => new[] { Math.Max(w.Start, from), Math.Min(w.End, Math.Min(to, Clock.NowMs())) }).ToList());
     }
 
     /// <summary>

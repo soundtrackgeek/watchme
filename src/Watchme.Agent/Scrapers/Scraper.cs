@@ -24,10 +24,19 @@ internal sealed class ScrapeContext(Database watchme, long now)
 
     /// <inheritdoc cref="Database.LatestData"/>
     public string? LatestData(string source, string kind) => watchme.LatestData(source, kind);
+
+    /// <summary>Why this run found nothing to read, shown in <c>watchme status</c>; the first one counts.</summary>
+    public string? Warning { get; private set; }
+
+    /// <summary>Says why there is nothing to read ("the log file is off"), for <c>watchme status</c>.</summary>
+    public void Warn(string message) => Warning ??= message;
 }
 
-/// <summary>Runs each scraper on its own interval and hands the results to the writer.</summary>
-internal sealed class ScraperHost(IEnumerable<IScraper> scrapers, string watchmeDbPath, Action<WatchEvent> emit)
+/// <summary>
+/// Runs each scraper on its own interval and hands the results to the writer. Events that fall in
+/// a pause are dropped, and how each run went is kept in <c>meta</c> for <c>watchme status</c>.
+/// </summary>
+internal sealed class ScraperHost(IEnumerable<IScraper> scrapers, string watchmeDbPath, string pauseFile, Action<WatchEvent> emit)
 {
     public Task RunAsync(CancellationToken ct) =>
         Task.WhenAll(scrapers.Select(s => Task.Run(() => RunOneAsync(s, ct), ct)));
@@ -38,36 +47,75 @@ internal sealed class ScraperHost(IEnumerable<IScraper> scrapers, string watchme
         // just keeps them out of the writer and the log. Bounded, since it is only an optimisation.
         var sent = new HashSet<string>();
         using var timer = new PeriodicTimer(scraper.Interval);
+        ScraperHealth? health = null;
         try
         {
             do
             {
+                // A separate connection: the writer owns the main one, and WAL lets us read alongside it.
+                Database? db = null;
                 try
                 {
-                    // A separate connection: the writer owns the main one, and WAL lets us read alongside it.
-                    using var db = Database.Open(watchmeDbPath);
-                    var events = scraper.Scrape(new ScrapeContext(db, Clock.NowMs()))
-                        .Where(e => e.ExtId is null || !sent.Contains(e.ExtId))
-                        .ToList();
-                    if (sent.Count > 50_000)
-                        sent.Clear();
-                    foreach (var e in events)
-                    {
-                        if (e.ExtId is not null)
-                            sent.Add(e.ExtId);
-                        emit(e);
-                    }
-                    if (events.Count > 0)
-                        Log.Info($"{scraper.Name}: {events.Count} events");
+                    db = Database.Open(watchmeDbPath);
+                    health ??= ScraperHealth.FromJson(db.GetMeta(ScraperHealth.MetaPrefix + scraper.Name));
+                    var now = Clock.NowMs();
+                    var context = new ScrapeContext(db, now);
+                    var events = Run(scraper, context, db, now, out var dropped);
+                    health = ScraperHealth.After(health, scraper.Name, scraper.Interval, now, events.Count, context.Warning, null);
+                    if (dropped > 0)
+                        Log.Info($"{scraper.Name}: left out {dropped} events from a pause");
                 }
                 catch (Exception ex)
                 {
                     Log.Error($"Scraper {scraper.Name} failed", ex);
+                    health = ScraperHealth.After(health, scraper.Name, scraper.Interval, Clock.NowMs(), 0, null, ex);
+                }
+                finally
+                {
+                    SaveHealth(db, scraper.Name, health);
+                    db?.Dispose();
                 }
             } while (await timer.WaitForNextTickAsync(ct));
         }
         catch (OperationCanceledException)
         {
+        }
+
+        List<WatchEvent> Run(IScraper scraper, ScrapeContext context, Database db, long now, out int dropped)
+        {
+            var paused = PauseState.Windows(db);
+            if (PauseState.Active(pauseFile, now) is { } p)
+                paused.Add((p.Since, p.Until)); // in case its event isn't written yet
+            var scraped = scraper.Scrape(context)
+                .Where(e => e.ExtId is null || !sent.Contains(e.ExtId))
+                .ToList();
+            var events = paused.Count == 0 ? scraped : scraped.Where(e => !PauseState.Covers(paused, e.Ts)).ToList();
+            dropped = scraped.Count - events.Count;
+            if (sent.Count > 50_000)
+                sent.Clear();
+            // Dropped ones count as handled too, so they aren't read and dropped again every run.
+            foreach (var e in scraped)
+                if (e.ExtId is not null)
+                    sent.Add(e.ExtId);
+            foreach (var e in events)
+                emit(e);
+            if (events.Count > 0)
+                Log.Info($"{scraper.Name}: {events.Count} events");
+            return events;
+        }
+    }
+
+    private static void SaveHealth(Database? db, string name, ScraperHealth? health)
+    {
+        if (db is null || health is null)
+            return;
+        try
+        {
+            db.SetMeta(ScraperHealth.MetaPrefix + name, health.ToJson());
+        }
+        catch (Exception ex)
+        {
+            Log.Error($"Could not save the health of {name}", ex);
         }
     }
 }

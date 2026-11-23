@@ -48,6 +48,8 @@ internal sealed class AuroraScraper(string dataDir, int backfillDays) : IScraper
         // All three queries hit an index and only read new rows, so polling is cheap.
         if (File.Exists(HistoryDb))
             events.AddRange(ReadListens(HistoryDb, Source, App, context, since));
+        if (!File.Exists(HistoryDb) && !File.Exists(StateDb))
+            context.Warn($"no Aurora databases in {dataDir}");
         if (File.Exists(StateDb))
         {
             events.AddRange(ReadTagEdits(context, since));

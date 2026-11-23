@@ -38,6 +38,8 @@ internal sealed class AuroraNgScraper(string dataDir, int backfillDays) : IScrap
             events.AddRange(AuroraScraper.ReadListens(HistoryDb, Source, App, context, since));
         if (File.Exists(RatingLog))
             events.AddRange(ReadRatings(context, since));
+        if (!File.Exists(HistoryDb) && !File.Exists(RatingLog))
+            context.Warn($"no listening history or rating log in {dataDir}");
         return events;
     }
 

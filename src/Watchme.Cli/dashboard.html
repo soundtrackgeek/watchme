@@ -141,6 +141,11 @@ tr.detail .bars .name { max-width: 520px; }
 .refresh { display: flex; align-items: center; gap: 8px; color: var(--text-2); font-size: 13px; }
 .refresh label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 #updated { color: var(--muted); font-variant-numeric: tabular-nums; }
+.banner { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; border: 1px solid var(--border); border-left: 4px solid var(--s4); background: var(--surface); border-radius: 10px; padding: 10px 14px; margin-bottom: 12px; font-size: 13px; }
+.banner.bad { border-left-color: var(--critical); }
+.banner b { font-weight: 600; }
+.banner ul { margin: 2px 0 0; padding-left: 18px; color: var(--text-2); flex-basis: 100%; }
+.banner code { font: 12px ui-monospace, "Cascadia Mono", Consolas, monospace; background: var(--wash); padding: 1px 5px; border-radius: 4px; }
 .loading .card, .loading .tile { opacity: 0.55; transition: opacity 0.15s; }
 .error { color: var(--critical); padding: 12px; }
 @media (max-width: 640px) { .tile.hero { grid-column: span 1; } .tile.hero .value { font-size: 36px; } }
@@ -171,6 +176,7 @@ tr.detail .bars .name { max-width: 520px; }
     <button class="iconbtn" id="theme" title="Switch light and dark">◐ Theme</button>
   </header>
 
+  <div id="status" aria-live="polite"></div>
   <div id="error"></div>
   <section class="tiles" id="tiles"></section>
 
@@ -463,6 +469,34 @@ function stamp() {
   $("#updated").textContent = `Updated ${clock(state.updated)}`;
 }
 
+// ---------- agent status banner: stopped, paused, or a source that needs a look ----------
+async function loadStatus() {
+  let s;
+  try { s = await getJson("/api/status"); } catch { return; }
+  const host = $("#status");
+  const now = Date.now();
+  const banners = [];
+  const code = (t) => el("code", { text: t });
+  if (!s.running) {
+    banners.push(el("div", { class: "banner bad" },
+      el("b", { text: "The agent isn't running." }),
+      el("span", {}, s.lastAlive ? `Last seen ${new Date(s.lastAlive).toLocaleString()}; ` : "", "nothing new is recorded until you run ", code("watchme start"), ".")));
+  }
+  if (s.pause) {
+    const left = Math.max(1, Math.ceil((s.pause.until - now) / 60000));
+    banners.push(el("div", { class: "banner" },
+      el("b", { text: `Paused until ${clock(s.pause.until)}` }),
+      el("span", {}, `${left < 60 ? left + " min" : Math.floor(left / 60) + " h " + pad(left % 60) + " min"} left. Nothing is recorded, app history included. `, code("watchme resume"), " ends it sooner.")));
+  }
+  if (s.problems.length) {
+    banners.push(el("div", { class: "banner" + (s.problems.some((p) => p.level === "failing") ? " bad" : "") },
+      el("b", { text: s.problems.length === 1 ? "1 source needs a look" : `${s.problems.length} sources need a look` }),
+      el("span", {}, "See ", code("watchme status"), " and agent.log."),
+      el("ul", {}, ...s.problems.map((p) => el("li", {}, el("b", { text: p.name }), " " + p.message)))));
+  }
+  host.replaceChildren(...banners);
+}
+
 async function load() {
   markPreset();
   writeHash();
@@ -473,6 +507,7 @@ async function load() {
     await fetchRange();
     await loadDay();
     resetLog();
+    loadStatus();
     stamp();
   } catch (err) {
     $("#error").replaceChildren(el("div", { class: "card error", text: `Could not load data: ${err.message}` }));
@@ -492,6 +527,7 @@ async function quietRefresh() {
     await fetchRange();
     renderTimeline(await getJson(`/api/day?date=${state.day}`));
     await loadNewLog();
+    await loadStatus();
     $("#error").replaceChildren();
     stamp();
   } catch (err) {
@@ -733,12 +769,20 @@ function renderTimeline(day) {
     hover(r, (ev) => showTip(ev, `${clock(s)}–${clock(e)}`, [{ value: dur(e - s), label: "idle or away" }]));
     root.append(r);
   }
+  const paused = (day.paused || []).filter(([s, e]) => e > t0 && s < t1);
+  for (const [s, e] of paused) {
+    const px = x(Math.max(s, t0)), pw = Math.max(2, x(Math.min(e, t1)) - px);
+    const r = svg("rect", { x: px, y: m.t + lane + 6, width: pw, height: idleLane, rx: 2, fill: css("--s4") });
+    hover(r, (ev) => showTip(ev, `${clock(s)}–${clock(e)}`, [{ value: dur(e - s), label: "paused" }], "Nothing was recorded (watchme pause)"));
+    root.append(r);
+  }
   host.append(root);
   const apps = [...new Set(day.blocks.map((b) => b.app))];
   const shown = apps.filter((a) => appSlot.has(a));
   const items = shown.map((a) => el("span", {}, el("i", { style: { background: appColor(a) } }), appName(a)));
   if (shown.length < apps.length) items.push(el("span", {}, el("i", { style: { background: css("--other") } }), "Other apps"));
   items.push(el("span", {}, el("i", { style: { background: css("--axis"), height: "4px" } }), "Idle"));
+  if (paused.length) items.push(el("span", {}, el("i", { style: { background: css("--s4"), height: "4px" } }), "Paused"));
   $("#timeline-legend").replaceChildren(...items);
 }
 

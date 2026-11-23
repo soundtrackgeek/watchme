@@ -4,7 +4,7 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
-## [0.20.0] - 2026-11-23
+## [0.21.0] - 2026-11-23
 
 ### Added
 
@@ -16,6 +16,22 @@ All notable changes to this project are documented here. The format follows
   *In the background* section.
 - Dashboard: a Hands-on column in the Apps table, rows for apps used only in the background, and
   their background use in the app's details.
+
+## [0.20.0] - 2026-11-23
+
+### Added
+
+- `watchme pause [30m|2h|1h30m|14:30]` and `watchme resume`: record nothing for a while (30
+  minutes by default, at most 24 hours), then carry on by itself. Focus and processes stop at
+  once, and events apps log during the pause (Edge history, PowerShell, plays, file operations)
+  are left out when they are read, even later. The report and the dashboard timeline show
+  pauses.
+- `watchme status` lists every source with when it was last read, its newest event, its events
+  in the last 7 days, and what is wrong when something is: a failing read, a source that stopped
+  being read, or why there was nothing to read (missing file, Total Commander's log off,
+  PowerShell hook not installed). It also says when a stopped agent was last seen.
+- Dashboard: a banner when the agent isn't running, while paused, and when a source needs a
+  look.
 
 ## [0.19.0] - 2026-11-23
 

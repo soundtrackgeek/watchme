@@ -18,6 +18,7 @@ internal sealed class FocusTracker(IDesktopProbe probe, WatchmeConfig config, Ac
     private string? _pendingTitle;
     private long _pendingSince;
     private bool _idle;
+    private bool _paused;
 
     private volatile bool _locked;
     private volatile bool _suspended;
@@ -67,7 +68,16 @@ internal sealed class FocusTracker(IDesktopProbe probe, WatchmeConfig config, Ac
             _current = null;
             _pendingTitle = null;
         }
-        if (_locked || _suspended)
+        // A pause (watchme pause) works like a lock: nothing is recorded, and afterwards the
+        // window in front starts a new span. The pause event itself closes the span before it.
+        var paused = IsPaused(now);
+        if (paused != _paused)
+        {
+            _paused = paused;
+            _current = null;
+            _pendingTitle = null;
+        }
+        if (_locked || _suspended || _paused)
             return;
 
         var idleMs = probe.GetIdleMilliseconds();
@@ -122,6 +132,9 @@ internal sealed class FocusTracker(IDesktopProbe probe, WatchmeConfig config, Ac
             emit(FocusEvent(_pendingSince, "title", window, window.Title));
         }
     }
+
+    /// <summary>Whether <c>watchme pause</c> is in effect at a moment; see <see cref="PauseMonitor"/>.</summary>
+    internal Func<long, bool> IsPaused { get; init; } = _ => false;
 
     /// <summary>Names Edge shows for its profiles in titles; replaceable for tests.</summary>
     internal Func<long, IEnumerable<string>> BrowserProfiles { get; init; } = WebApps.EdgeProfileNames;

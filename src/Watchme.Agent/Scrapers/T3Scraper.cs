@@ -43,7 +43,10 @@ internal sealed partial class T3Scraper(string statePath, int backfillDays) : IS
     public IReadOnlyList<WatchEvent> Scrape(ScrapeContext context)
     {
         if (!File.Exists(statePath))
+        {
+            context.Warn($"no T3 Code state database at {statePath}");
             return [];
+        }
 
         var cursor = context.Cursor(Source, Kind, "completed_ts");
         var from = cursor is { } c ? c - LookbackMs : context.Now - backfillDays * 24L * 60 * 60 * 1000;

@@ -63,7 +63,12 @@ internal sealed partial class TotalCommanderScraper(Func<string?> logPath, int b
     {
         var path = logPath();
         if (path is null)
+        {
+            context.Warn("no log file set in wincmd.ini; turn on Total Commander's log under Configuration → Log file");
             return [];
+        }
+        if (!File.Exists(path))
+            context.Warn($"Total Commander's log file {path} does not exist yet");
 
         var lines = ReadAllLogs(path);
         var pending = NewLines(lines, context.LatestData(Source, Kind), context.Now - backfillDays * 24L * 60 * 60 * 1000);

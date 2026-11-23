@@ -96,7 +96,13 @@ internal static class AgentControl
 
     public static int Status()
     {
-        Console.WriteLine($"Agent:    {(IsRunning() ? "running" : "not running")}");
+        var running = IsRunning();
+        var now = Clock.NowMs();
+        var pause = PauseState.Active(PauseState.FilePath, now);
+        var agent = running ? "running" : "not running";
+        if (pause is not null)
+            agent += $", paused until {AgentHealth.When(pause.Until, now)} ({AgentHealth.Left(pause.Until - now)} left; 'watchme resume' ends it)";
+        Console.WriteLine($"Agent:    {agent}");
         using (var key = Registry.CurrentUser.OpenSubKey(RunKeyPath))
         {
             var registered = key?.GetValue(RunValueName) as string;
@@ -119,7 +125,38 @@ internal static class AgentControl
         Console.WriteLine($"Database: {count:N0} events, {size / 1024.0 / 1024.0:N1} MB");
         if (first is long f && last is long l)
             Console.WriteLine($"Range:    {Local(f):yyyy-MM-dd HH:mm} → {Local(l):yyyy-MM-dd HH:mm}");
+
+        var health = AgentHealth.Build(db, running, now, PauseState.FilePath);
+        if (!running && health.LastAlive is { } alive)
+            Console.WriteLine($"Last seen {AgentHealth.When(alive, now)}; nothing new is recorded until 'watchme start'.");
+        PrintSources(health, now);
         return 0;
+    }
+
+    private static void PrintSources(AgentHealth.Report health, long now)
+    {
+        if (health.Sources.Count == 0)
+            return;
+        Console.WriteLine();
+        Console.WriteLine($"  {"Source",-16} {"Last run",-16} {"Last event",-16} {$"{health.RecentDays} days",8}");
+        foreach (var s in health.Sources)
+        {
+            var mark = s.Level switch
+            {
+                AgentHealth.Level.Failing => "✕ ",
+                AgentHealth.Level.Stalled or AgentHealth.Level.Warning => "! ",
+                _ => "",
+            };
+            var line = $"  {s.Name,-16} {(s.LastRun is { } r ? AgentHealth.When(r, now) : "—"),-16} " +
+                       $"{(s.LastEvent is { } e ? AgentHealth.When(e, now) : "—"),-16} {s.Recent,8:N0}";
+            Console.WriteLine(s.Message is null ? line : $"{line}  {mark}{s.Message}");
+        }
+        var problems = health.Problems.Count();
+        if (problems > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine(problems == 1 ? "1 source needs a look; details are in agent.log." : $"{problems} sources need a look; details are in agent.log.");
+        }
     }
 
     private static DateTime Local(long ms) => DateTimeOffset.FromUnixTimeMilliseconds(ms).LocalDateTime;
