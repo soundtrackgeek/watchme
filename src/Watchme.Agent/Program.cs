@@ -100,6 +100,15 @@ namespace Watchme.Agent
             }
             if (config.PowerShellEnabled)
                 scrapers.Add(new PowerShellScraper(Paths.Inbox, config.ScrapeBackfillDays));
+            // Flipside and Forever both write logs\activity.YYYY-MM-DD.jsonl in their data folder.
+            string AppDataDir(string? configured, string identifier) => configured ?? Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), identifier);
+            if (config.FlipsideEnabled)
+                scrapers.Add(new ActivityLogScraper(EventSources.Flipside, "flipside.exe",
+                    Path.Combine(AppDataDir(config.FlipsideDataDir, "com.soundtrackgeek.flipside"), "logs"), config.ScrapeBackfillDays));
+            if (config.ForeverEnabled)
+                scrapers.Add(new ActivityLogScraper(EventSources.Forever, "forever.exe",
+                    Path.Combine(AppDataDir(config.ForeverDataDir, "com.soundtrackgeek.forever"), "logs"), config.ScrapeBackfillDays));
             var scraperHost = new ScraperHost(scrapers, Paths.Database, writer.Post);
 
             var collectors = new[]

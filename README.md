@@ -10,7 +10,7 @@ so it can tell you not just *that* you used an app but *what you did* in it.
 This is a layered plan:
 
 1. **Focus, idle, sessions and processes** — works for every app with no per-app code.
-2. **App-native data sources** — Aurora, Aurora NG, Music Library ratings, Total Commander, T3 Code sessions and git.
+2. **App-native data sources** — Aurora, Aurora NG, Music Library ratings, Total Commander, T3 Code sessions, git, Edge, Flipside and Forever.
 3. A local endpoint your own apps can push events to.
 4. OS-level file attribution (ETW) and UI Automation scraping where nothing else works.
 
@@ -51,6 +51,10 @@ last `scrapeBackfillDays` days.
 | `git`    | `commit` / `push` / `pull` / `merge` / `checkout` / `reset` / `rebase` / `clone` | Reflogs (`.git/logs/HEAD`, worktrees, `logs/refs/remotes`) of repos under `gitRoots` | `Committed to watchme (master): Add T3 Code scraper` |
 | `git`    | `repo_init` / `folder_created` | Creation time of `.git` / of folders directly inside `gitRoots` | `Created folder watchme in C:\_code` |
 | `edge`   | `visit`       | Each Edge profile's `History` database (a copy, read when it changed) | `Magik One: First Flight by Tiësto - Rate Your Music` (data: host, url, search) |
+| `flipside` / `forever` | `search` | The app's activity log, `logs\activity.YYYY-MM-DD.jsonl` | `Searched Soulseek for “inxs remixes”`, `Searched the catalog for “tiësto”` |
+| `forever` | `browse` | 〃 | `Browsed alice's shares (12,345 files)` |
+| `forever` | `wanted_add` | 〃 | `Added INXS – INXS² The Remixes (2004) to Wanted` |
+| `flipside` / `forever` | `download_queued` / `download` | 〃 | `Downloaded Tiësto – Just Be (2004) from Deezer (FLAC, 12 tracks)` |
 
 Track and disc numbering changes are kept in `data.changes` but shortened to "numbering" in titles.
 
@@ -186,6 +190,36 @@ of pages, and what the busiest two were about, plus the searches made:
 07:54        Edge            Searched Google for “t3 code”; Rate Your Music for “coolio”, “gigi d'agostino”
 ```
 
+### Flipside and Forever
+
+Neither app kept a timed record of what you searched for or whose shares you browsed, so both
+now write an activity log (Flipside 0.17.0 and Forever 0.0.98 onwards): one JSON line per action
+in `logs\activity.YYYY-MM-DD.jsonl` in their data folder (`%APPDATA%\com.soundtrackgeek.flipside`,
+`%APPDATA%\com.soundtrackgeek.forever`), kept for 90 days. Watchme reads it every 30 seconds.
+
+| event | Flipside | Forever |
+|-------|----------|---------|
+| `search` | Store searches (`service: catalog`) and Soulseek searches from the Get drawer | Soulseek searches, and searches inside one user's shares (`scope: user`) |
+| `browse` | — | Whose shares you opened (`ok: false` when they didn't answer) |
+| `wanted_add` | — | Albums added to Wanted, alone or in bulk |
+| `download_queued` | Soulseek releases and Usenet NZBs you queued | Soulseek releases and files; `origin: smart` when Smart downloads queued it |
+| `download` | Finished Deezer albums, Usenet releases and Soulseek releases | Finished Soulseek releases, with every user who sent files |
+
+Work the apps do on their own is left out: Forever's Wanted checks and relay searches, and
+Flipside's Auto-get searches (the album Auto-get downloads is logged). Soulseek downloads are
+logged once the release's last file is in.
+
+In the report, each app gets one line per sitting (actions less than 30 minutes apart) for each of
+searches, browsed users, Wanted additions and finished downloads. Queued downloads are in the
+event log and dashboard but not the report, since the finished download says the same:
+
+```
+20:14–20:31  Forever         Searched Soulseek for “inxs remixes”, “new drama”; alice's shares for “flac”
+20:16–20:20  Forever         Browsed the shares of 2 users: alice, bob (no answer)
+20:22–21:05  Forever         Downloaded 3 albums (1.4 GB): INXS - Kick (1987) from alice; ...
+21:10        Flipside        Downloaded Tiësto – Just Be (2004) from Deezer (FLAC, 12 tracks)
+```
+
 ### Total Commander setup
 
 Turn on *Configuration → Options → Log file → Create a log file*, with the operations you want
@@ -291,7 +325,8 @@ the agent is running.
 
 For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you pick), it shows:
 
-- **Totals:** focus time, songs, pages, agent prompts, commits, commands, ratings, albums added.
+- **Totals:** focus time, songs, pages, agent prompts, commits, commands, ratings, albums added,
+  downloads (Flipside and Forever).
 - **Focus time per day**, stacked by app (the top 7, the rest as *Other*), with a table view.
 - **When:** an hour-of-day grid of focus minutes or app events.
 - **Day timeline:** one day's blocks of work by app, idle stretches, and the report's *Activity
@@ -351,6 +386,10 @@ GROUP BY app ORDER BY minutes DESC;
 | `edgeEnabled`         | `true`  | Read Edge's browsing history |
 | `edgeUserDataDir`     | `null`  | `null` means `%LOCALAPPDATA%\Microsoft\Edge\User Data` (every profile in it is read) |
 | `edgePrivateSites`    | banks, payment and sign-in hosts | Hosts containing an entry keep only the host; entries ending in `.` (`login.`) must start the host |
+| `flipsideEnabled`     | `true`  | Read Flipside's activity log (searches, downloads) |
+| `flipsideDataDir`     | `null`  | `null` means `%APPDATA%\com.soundtrackgeek.flipside` |
+| `foreverEnabled`      | `true`  | Read Forever's activity log (searches, browsed users, Wanted, downloads) |
+| `foreverDataDir`      | `null`  | `null` means `%APPDATA%\com.soundtrackgeek.forever` |
 | `scrapeBackfillDays`  | 7       | History imported from apps on first run |
 
 Settings missing from an older `config.json` use their defaults.

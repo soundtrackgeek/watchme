@@ -90,6 +90,18 @@ public sealed class WatchmeConfig
     /// <summary>Read the commands you run in PowerShell, logged by the hook from <c>watchme powershell install</c>.</summary>
     public bool PowerShellEnabled { get; set; } = true;
 
+    /// <summary>Read your searches and downloads (Deezer, Usenet, Soulseek) from Flipside's activity log.</summary>
+    public bool FlipsideEnabled { get; set; } = true;
+
+    /// <summary>Flipside's data folder; null means %APPDATA%\com.soundtrackgeek.flipside.</summary>
+    public string? FlipsideDataDir { get; set; }
+
+    /// <summary>Read your searches, browsed users, Wanted additions and downloads from Forever's activity log.</summary>
+    public bool ForeverEnabled { get; set; } = true;
+
+    /// <summary>Forever's data folder; null means %APPDATA%\com.soundtrackgeek.forever.</summary>
+    public string? ForeverDataDir { get; set; }
+
     /// <summary>On first run, scrapers import this many days of history from apps.</summary>
     public int ScrapeBackfillDays { get; set; } = 7;
 

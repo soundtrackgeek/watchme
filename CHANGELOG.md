@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.16.0] - 2026-11-23
+
+### Added
+
+- Flipside and Forever scrapers: read the activity log both apps keep in
+  `logs\activity.YYYY-MM-DD.jsonl` (Flipside 0.17.0 and Forever 0.0.98 onwards) as
+  `flipside/*` and `forever/*` events: `search` (the catalog, Soulseek, or one user's shares),
+  `browse` (whose shares you opened), `wanted_add`, `download_queued` and `download` (which
+  service and which Soulseek users, files and size). Background work (Forever's Wanted checks
+  and relay searches, Flipside's Auto-get searches) is not in the log.
+- The report shows one line per app and sitting for searches, browsed users, Wanted additions and
+  finished downloads. The dashboard has a Downloads tile.
+- Config: `flipsideEnabled`, `flipsideDataDir`, `foreverEnabled`, `foreverDataDir`.
+
 ## [0.15.0] - 2026-11-23
 
 ### Added

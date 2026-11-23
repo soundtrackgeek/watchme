@@ -16,7 +16,7 @@ public static class Dashboard
     public sealed record Totals(
         long ActiveMs, int AppsUsed, int Listens, double ListenedS, int Pages, int Commits, int Pushes,
         int Prompts, double AgentS, int Commands, int FailedCommands, int FileOps, int Ratings,
-        int AlbumsAdded, int AlbumsRemoved, int TagChanges);
+        int AlbumsAdded, int AlbumsRemoved, int TagChanges, int Downloads, int MusicSearches);
 
     public sealed record Day(string Date, long ActiveMs, Dictionary<string, long> Apps, Dictionary<string, int> Events);
 
@@ -151,7 +151,9 @@ public static class Dashboard
             Ratings: Kind(EventSources.AuroraNg, "rating") + Kind(EventSources.MusicLibrary, "rating"),
             AlbumsAdded: Kind(EventSources.MusicLibrary, "album_added"),
             AlbumsRemoved: Kind(EventSources.MusicLibrary, "album_removed"),
-            TagChanges: Kind(EventSources.MusicLibrary, "tag_change"));
+            TagChanges: Kind(EventSources.MusicLibrary, "tag_change"),
+            Downloads: Kind(EventSources.Flipside, "download") + Kind(EventSources.Forever, "download"),
+            MusicSearches: Kind(EventSources.Flipside, "search") + Kind(EventSources.Forever, "search"));
 
         return new Data(
             from.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),

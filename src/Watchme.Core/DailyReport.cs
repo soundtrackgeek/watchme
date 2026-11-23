@@ -245,12 +245,14 @@ public static class DailyReport
         var addedIds = added.Select(e => Str(e.Data, "album_id")).ToHashSet();
         lines.AddRange(EdgeLines(events.Where(e => e.Source == EventSources.Edge && e.Kind == "visit").ToList()));
         lines.AddRange(PowerShellLines(events.Where(e => e.Source == EventSources.PowerShell && e.Kind == "command").ToList()));
+        lines.AddRange(MusicAppLines(events.Where(e => e.Source is EventSources.Flipside or EventSources.Forever).ToList()));
         lines.AddRange(RatingLines(
             events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "rating").ToList(),
             events.Where(e => e.Source == EventSources.AuroraNg && e.Kind == "rating").ToList()));
         events = events
             .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git
                         && !(e.Source == EventSources.PowerShell && e.Kind == "command")
+                        && e.Source is not (EventSources.Flipside or EventSources.Forever)
                         && !(e.Source == EventSources.Edge && e.Kind == "visit")
                         && !(e.Source == EventSources.MusicLibrary && e.Kind is "album_removed" or "album_added" or "tag_change")
                         && !(e.Source == EventSources.Aurora && e.Kind == "album_added" && addedIds.Contains(Str(e.Data, "album_id")))
@@ -554,6 +556,93 @@ public static class DailyReport
                 yield return (firstSearch.Ts, $"{Time(firstSearch.Ts)}        {source,-15} {Trim("Searched " + string.Join("; ", searches), 300)}");
             }
         }
+    }
+
+    /// <summary>Flipside or Forever events more than this far apart are separate sittings.</summary>
+    public const long MusicAppSittingGapMs = 30 * 60 * 1000;
+
+    /// <summary>
+    /// Flipside's and Forever's activity logs, per app and sitting: one line each for the searches,
+    /// the users browsed, the albums added to Wanted and the downloads finished. A lone event is
+    /// shown with its own title. Queued downloads are left out; the finished download says it.
+    /// <code>
+    /// Searched Soulseek for “inxs remixes”, “new drama”; the catalog for “tiësto”
+    /// Downloaded 3 albums (1.2 GB): INXS – Remixes (2004) from Deezer; New Drama - Fantasized (1984) from alice; …
+    /// </code>
+    /// </summary>
+    private static IEnumerable<(long Ts, string Line)> MusicAppLines(List<ActivityEvent> events)
+    {
+        foreach (var app in events.GroupBy(e => e.Source))
+        {
+            var source = EventSources.DisplayName(app.Key);
+            var sitting = new List<ActivityEvent>();
+            foreach (var e in app.OrderBy(e => e.Ts))
+            {
+                if (sitting.Count > 0 && e.Ts - sitting[^1].Ts > MusicAppSittingGapMs)
+                {
+                    foreach (var line in Lines(sitting, source))
+                        yield return line;
+                    sitting = [];
+                }
+                sitting.Add(e);
+            }
+            foreach (var line in Lines(sitting, source))
+                yield return line;
+        }
+
+        static IEnumerable<(long, string)> Lines(List<ActivityEvent> sitting, string source)
+        {
+            var searches = sitting.Where(e => e.Kind == "search").ToList();
+            if (searches.Count > 0)
+            {
+                var where = searches
+                    .GroupBy(e => Str(e.Data, "scope") == "user" ? $"{Str(e.Data, "username")}'s shares" : MusicAppActivity.ServiceName(Str(e.Data, "service")))
+                    .Select(g => $"{g.Key} for {string.Join(", ", g.Select(e => $"“{Str(e.Data, "query")}”").Distinct(StringComparer.OrdinalIgnoreCase))}");
+                yield return Line(searches, "Searched " + string.Join("; ", where));
+            }
+
+            var browses = sitting.Where(e => e.Kind == "browse").ToList();
+            if (browses.Count > 0)
+            {
+                var users = browses
+                    .GroupBy(e => Str(e.Data, "username") ?? "?", StringComparer.OrdinalIgnoreCase)
+                    .Select(g => g.Any(e => Str(e.Data, "ok") != "false") ? g.Key : $"{g.Key} (no answer)")
+                    .ToList();
+                yield return users.Count == 1
+                    ? Line(browses, browses.Count == 1 ? browses[0].Title! : $"Browsed {users[0]}'s shares")
+                    : Line(browses, $"Browsed the shares of {users.Count} users: {string.Join(", ", users)}");
+            }
+
+            var wanted = sitting.Where(e => e.Kind == "wanted_add").ToList();
+            if (wanted.Count > 0)
+                yield return Line(wanted, wanted.Count == 1 ? wanted[0].Title!
+                    : $"Added {wanted.Count} albums to Wanted: {string.Join("; ", wanted.Select(e =>
+                        $"{Str(e.Data, "artist")} – {Str(e.Data, "title")}{(Str(e.Data, "year") is { } y ? $" ({y})" : "")}"))}");
+
+            var downloads = sitting.Where(e => e.Kind == "download").ToList();
+            if (downloads.Count > 0)
+            {
+                var bytes = downloads.Sum(e => long.TryParse(Str(e.Data, "bytes"), out var b) ? b : 0);
+                yield return Line(downloads, downloads.Count == 1 ? downloads[0].Title!
+                    : $"Downloaded {downloads.Count} albums{(bytes > 0 ? $" ({Size(bytes)})" : "")}: "
+                      + string.Join("; ", downloads.Select(e => e.Data is { } data ? MusicAppActivity.What(data) + MusicAppActivity.From(data) : e.Title)));
+            }
+
+            (long, string) Line(List<ActivityEvent> group, string what) =>
+                (group[0].Ts, $"{When(group[0].Ts, group[^1].Ts)}{source,-15} {Trim(what, 400)}");
+        }
+    }
+
+    /// <summary>"512 KB", "48.3 MB", "1.2 GB".</summary>
+    public static string Size(long bytes)
+    {
+        var c = System.Globalization.CultureInfo.InvariantCulture;
+        return bytes switch
+        {
+            >= 1L << 30 => (bytes / (double)(1L << 30)).ToString("0.0", c) + " GB",
+            >= 1L << 20 => (bytes / (double)(1L << 20)).ToString("0.0", c) + " MB",
+            _ => Math.Max(1, bytes / 1024).ToString(c) + " KB",
+        };
     }
 
     /// <summary>

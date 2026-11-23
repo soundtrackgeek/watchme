@@ -36,6 +36,8 @@ public static class EventSources
     public const string MusicLibrary = "musiclibrary";
     public const string PowerShell = "powershell";
     public const string Edge = "edge";
+    public const string Flipside = "flipside";
+    public const string Forever = "forever";
 
     /// <summary>How each source is named in reports.</summary>
     public static string DisplayName(string source) => source switch
@@ -48,6 +50,8 @@ public static class EventSources
         Aurora => "Aurora",
         TotalCommander => "Total Commander",
         T3 => "T3 Code",
+        Flipside => "Flipside",
+        Forever => "Forever",
         _ => source.Length == 0 ? source : char.ToUpperInvariant(source[0]) + source[1..],
     };
 
