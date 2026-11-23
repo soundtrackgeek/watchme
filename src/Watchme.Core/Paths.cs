@@ -31,4 +31,26 @@ public static class AgentIpc
     public const string StopEventName = @"Local\Watchme.Agent.Stop";
 
     public const string ExeName = "Watchme.Agent.exe";
+
+    /// <summary>The CLI, next to the agent; the tray starts the dashboard with it.</summary>
+    public const string CliExeName = "watchme.exe";
+
+    /// <summary>Where <c>watchme dashboard</c> listens first.</summary>
+    public const int DashboardPort = 7317;
+
+    /// <summary>The first port from <paramref name="start"/> that nothing listens on, so a second dashboard still starts.</summary>
+    public static int FirstFreePort(int start)
+    {
+        for (var port = start; port < start + 20; port++)
+        {
+            try
+            {
+                using var probe = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+                probe.Start();
+                return port;
+            }
+            catch (System.Net.Sockets.SocketException) { }
+        }
+        return start;
+    }
 }

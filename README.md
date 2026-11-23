@@ -371,6 +371,33 @@ pause (Edge history, PowerShell commands, plays, file operations) is left out to
 is read later, and even if the agent wasn't running. Pausing again changes the end time. The
 report and the dashboard's day timeline show when you paused.
 
+You don't need a terminal for it: the [tray icon](#tray-icon) and the dashboard's **⏸ Pause**
+menu pause for 15 minutes to 2 hours, and the dashboard's pause banner has **▶ Resume now**.
+
+## Tray icon
+
+While the agent runs, Watchme sits in the notification area next to the clock:
+
+| icon | means |
+|------|-------|
+| blue eye | recording |
+| grey pause sign | paused; the tooltip says until when and how long is left |
+| amber badge | a source needs a look (it stopped being read, or has nothing to read) |
+| red badge | a source is failing |
+
+Its menu has:
+
+- **Pause for** 15 minutes, 30 minutes, 1 hour or 2 hours, and **Resume recording** while paused.
+  It's the same pause as `watchme pause`.
+- The sources that need a look, each with what is wrong. Click one to open `agent.log`.
+- **Open dashboard** (or double-click the icon). This starts the dashboard without a terminal
+  window the first time and opens it in your browser. The server stops when the agent does.
+- **Copy today's report** puts the text of `watchme report` on the clipboard.
+- **Edit settings (config.json)**, **Open data folder** and **Quit Watchme** (stops recording until
+  your next logon or `watchme start`).
+
+If you'd rather not have the icon, set `"trayIcon": false` in `config.json`.
+
 ## Several days at once
 
 `watchme report` also takes a range and prints one summary for it:
@@ -422,7 +449,8 @@ watchme dashboard
 This starts a small web server on <http://127.0.0.1:7317> (the next free port if that one is taken)
 and opens it in your browser. Press Ctrl+C to stop it. `--port N` picks the port and `--no-open`
 leaves the browser alone. It reads the same database as the report, so it works whether or not
-the agent is running.
+the agent is running. **Open dashboard** in the [tray icon](#tray-icon)'s menu does the same without a
+terminal.
 
 For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you pick), it shows:
 
@@ -448,12 +476,15 @@ For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you
 Click a day in *Focus time per day* or *Activity in apps* to open it in the day timeline. Click
 an hour in *When* (or in a single day's *Activity in apps* charts) to open that day with its
 activity list set to that hour.
+**⏸ Pause** in the header pauses recording for 15 minutes to 2 hours, and the pause banner's
+**▶ Resume now** ends it (see [Pausing](#pausing)).
 **↻ Refresh** reloads the data; with **Auto** ticked the page refreshes itself every minute while
 the range includes today, adding new events to the top of the log without losing your place.
 
 The page is built into `watchme.exe` and loads nothing from the internet. The server only listens
 on the loopback address and only answers requests addressed to `127.0.0.1` or `localhost`, so a
-web page can't read your data through a DNS rebinding trick. The range, the day and the app filter
+web page can't read your data through a DNS rebinding trick. Pausing and resuming only work from
+the dashboard page itself; other sites can't pause your recording. The range, the day and the app filter
 are kept in the address (`#from=…&to=…&day=…&app=…`), so a view can be bookmarked. The theme follows Windows; the ◐ button switches it.
 
 ## Querying the data yourself
@@ -504,6 +535,7 @@ GROUP BY app ORDER BY minutes DESC;
 | `foreverEnabled`      | `true`  | Read Forever's activity log (searches, browsed users, Wanted, downloads) |
 | `foreverDataDir`      | `null`  | `null` means `%APPDATA%\com.soundtrackgeek.forever` |
 | `scrapeBackfillDays`  | 7       | History imported from apps on first run |
+| `trayIcon`            | `true`  | Show the [tray icon](#tray-icon) while the agent runs |
 
 Settings missing from an older `config.json` use their defaults.
 

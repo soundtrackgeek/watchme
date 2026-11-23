@@ -119,9 +119,13 @@ namespace Watchme.Agent
                 scraperHost.RunAsync(_cts.Token),
             };
 
-            // Block until `watchme stop` signals us, or logoff/shutdown calls RequestStop.
+            using var tray = config.TrayIcon ? TrayIcon.Start(() => RequestStop("tray")) : null;
+
+            // Block until `watchme stop` signals us, Quit in the tray menu, or logoff/shutdown calls RequestStop.
             WaitHandle.WaitAny([stopSignal, _cts.Token.WaitHandle]);
             RequestStop("stop");
+            // First, so the icon goes away (and the dashboard it started stops) without waiting on the collectors.
+            tray?.Dispose();
 
             Task.WaitAll(collectors, TimeSpan.FromSeconds(3));
             writer.Post(new WatchEvent(Clock.NowMs(), EventSources.Agent, "stop")

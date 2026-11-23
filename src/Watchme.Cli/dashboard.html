@@ -58,6 +58,8 @@ input[type=date], select, input[type=search] {
 .spacer { flex: 1; }
 .iconbtn { border: 1px solid var(--border); background: var(--surface); color: var(--text-2); border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer; }
 .iconbtn:hover { color: var(--text); }
+select.iconbtn { padding: 5px 8px; }
+.banner .iconbtn { padding: 2px 10px; font-size: 12px; align-self: center; }
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; min-width: 0; }
 .card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin-bottom: 12px; }
 .card-head .sub { color: var(--text-2); font-size: 13px; }
@@ -190,6 +192,13 @@ tr.detail .bars .name { max-width: 520px; }
       <label title="Reload every minute while the range includes today"><input type="checkbox" id="auto"> Auto</label>
       <button class="iconbtn" id="refresh" title="Reload the data">↻ Refresh</button>
     </div>
+    <select class="iconbtn" id="pause" title="Record nothing for a while, app history included" aria-label="Pause recording" hidden>
+      <option value="" selected>⏸ Pause</option>
+      <option value="15m">for 15 minutes</option>
+      <option value="30m">for 30 minutes</option>
+      <option value="1h">for 1 hour</option>
+      <option value="2h">for 2 hours</option>
+    </select>
     <button class="iconbtn" id="theme" title="Switch light and dark">◐ Theme</button>
   </header>
 
@@ -533,6 +542,13 @@ function markPreset() {
     : `${dayLabel(state.from, { day: "numeric", month: "short" })} – ${dayLabel(state.to, { day: "numeric", month: "short", year: "numeric" })}`;
 }
 
+async function postJson(url) {
+  // The header is what lets the server tell this page from a form on some other site.
+  const res = await fetch(url, { method: "POST", headers: { "X-Watchme": "1" } });
+  if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+  return res.json();
+}
+
 async function getJson(url) {
   const res = await fetch(url);
   if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
@@ -573,10 +589,15 @@ async function loadStatus() {
   }
   if (s.pause) {
     const left = Math.max(1, Math.ceil((s.pause.until - now) / 60000));
+    const resume = el("button", { class: "iconbtn", text: "▶ Resume now" });
+    resume.addEventListener("click", () => changePause("/api/resume", resume));
     banners.push(el("div", { class: "banner" },
       el("b", { text: `Paused until ${clock(s.pause.until)}` }),
-      el("span", {}, `${left < 60 ? left + " min" : Math.floor(left / 60) + " h " + pad(left % 60) + " min"} left. Nothing is recorded, app history included. `, code("watchme resume"), " ends it sooner.")));
+      el("span", {}, `${left < 60 ? left + " min" : Math.floor(left / 60) + " h " + pad(left % 60) + " min"} left. Nothing is recorded, app history included.`),
+      resume));
   }
+  // Pausing only makes sense while the agent records; while paused the banner offers Resume.
+  $("#pause").hidden = !s.running || !!s.pause;
   if (s.problems.length) {
     banners.push(el("div", { class: "banner" + (s.problems.some((p) => p.level === "failing") ? " bad" : "") },
       el("b", { text: s.problems.length === 1 ? "1 source needs a look" : `${s.problems.length} sources need a look` }),
@@ -584,6 +605,20 @@ async function loadStatus() {
       el("ul", {}, ...s.problems.map((p) => el("li", {}, el("b", { text: p.name }), " " + p.message)))));
   }
   host.replaceChildren(...banners);
+}
+
+async function changePause(url, control) {
+  control.disabled = true;
+  try {
+    await postJson(url);
+    await loadStatus();
+    // The timeline marks pauses, so redraw today's.
+    if (state.day === isoDay(new Date())) renderTimeline(await getJson(`/api/day?date=${state.day}`));
+  } catch (err) {
+    $("#error").replaceChildren(el("div", { class: "card error", text: `Could not change the pause: ${err.message}` }));
+  } finally {
+    control.disabled = false;
+  }
 }
 
 async function load() {
@@ -1183,6 +1218,11 @@ for (const id of ["#span-from", "#span-to"]) {
 $("#log-source").addEventListener("change", resetLog);
 $("#log-app-clear").addEventListener("click", () => setLogApp(null));
 $("#refresh").addEventListener("click", () => { if (!state.busy) load(); });
+$("#pause").addEventListener("change", (e) => {
+  const value = e.target.value;
+  e.target.value = "";
+  if (value) changePause(`/api/pause?for=${encodeURIComponent(value)}`, e.target);
+});
 
 // Auto-refresh only matters while the range reaches today, and only for a tab someone can see.
 const live = () => state.to >= isoDay(new Date());

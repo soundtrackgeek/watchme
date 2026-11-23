@@ -4,6 +4,20 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.23.0] - 2026-11-23
+
+### Added
+
+- A tray icon while the agent runs. It shows whether Watchme is recording (blue eye) or paused
+  (grey, with the end time and time left in its tooltip), and a badge when a source needs a look
+  (amber) or is failing (red). Its menu pauses for 15 minutes to 2 hours, resumes, lists the
+  sources that need a look (click to open `agent.log`) and opens the dashboard without a terminal
+  window (also on double-click). It also copies today's report to the clipboard, opens
+  `config.json` and the data folder, and quits the agent. `"trayIcon": false` in `config.json`
+  turns it off.
+- Dashboard: **⏸ Pause** in the header (15 minutes to 2 hours) and **▶ Resume now** in the pause
+  banner. Only the dashboard page itself can pause or resume, not other sites.
+
 ## [0.22.0] - 2026-11-23
 
 ### Added

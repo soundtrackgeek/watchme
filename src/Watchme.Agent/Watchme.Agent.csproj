@@ -3,6 +3,8 @@
   <PropertyGroup>
     <!-- WinExe: no console window, so it can run silently from the Run key at logon. -->
     <OutputType>WinExe</OutputType>
+    <!-- Only for the tray icon (NotifyIcon and its menu), which runs on a thread of its own. -->
+    <UseWindowsForms>true</UseWindowsForms>
   </PropertyGroup>
 
   <ItemGroup>

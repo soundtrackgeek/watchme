@@ -102,6 +102,9 @@ public sealed class WatchmeConfig
     /// <summary>Forever's data folder; null means %APPDATA%\com.soundtrackgeek.forever.</summary>
     public string? ForeverDataDir { get; set; }
 
+    /// <summary>Show the agent in the notification area (pause, resume, dashboard, source problems).</summary>
+    public bool TrayIcon { get; set; } = true;
+
     /// <summary>On first run, scrapers import this many days of history from apps.</summary>
     public int ScrapeBackfillDays { get; set; } = 7;
 
