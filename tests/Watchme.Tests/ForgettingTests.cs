@@ -228,11 +228,15 @@ public sealed class ForgettingTests : IDisposable
         using (var db = Database.Open(path))
         {
             db.Insert([Visit(1, "https://a", "a")]);
-            db.Execute("DROP TABLE forgotten; DROP TABLE forgotten_windows; PRAGMA user_version = 2;");
+            db.Execute("""
+                DROP TABLE forgotten; DROP TABLE forgotten_windows;
+                DROP TRIGGER events_fts_insert; DROP TRIGGER events_fts_delete; DROP TRIGGER events_fts_update; DROP TABLE events_fts;
+                PRAGMA user_version = 2;
+                """);
         }
         using (var db = Database.Open(path))
         {
-            Assert.Equal(3L, db.Scalar("PRAGMA user_version;"));
+            Assert.Equal((long)Database.SchemaVersion, db.Scalar("PRAGMA user_version;"));
             Assert.Equal(1, Forgetting.Apply(db, new Forgetting.Selection(null, null, ["https://a"]), false, At(60)).Removed);
             db.Insert([Visit(1, "https://a", "a")]);
             Assert.Equal(0, Count(db, "source = 'edge'"));

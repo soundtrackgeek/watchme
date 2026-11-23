@@ -4,6 +4,19 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.25.0] - 2026-11-23
+
+### Changed
+
+- Search ignores accents and case for every letter: `tiesto` and `TIËSTO` find Tiësto,
+  `reggaeton` finds Reggaetón and `oya` finds Øya. This applies to `watchme search`, the
+  dashboard's event log and `watchme forget --match`, and highlighted matches follow it.
+- Searches go through a full-text index (SQLite FTS5, trigrams) instead of reading every event,
+  so they stay fast as history grows. Words still match inside longer words, and only the values
+  in an event's data count, not its field names. Words shorter than three letters are matched
+  the old way. The index is built once when the database is first opened (database schema 4,
+  about half a second for 40,000 events) and makes the file about 70% bigger.
+
 ## [0.24.0] - 2026-11-23
 
 ### Added

@@ -243,11 +243,9 @@ public static class Dashboard
             where.Add("source = $source");
             cmd.Parameters.AddWithValue("$source", source);
         }
+        // The whole box is one phrase, as before; now through the index, and accent-blind.
         if (!string.IsNullOrWhiteSpace(query))
-        {
-            where.Add("(title LIKE $q ESCAPE '\\' OR app LIKE $q ESCAPE '\\' OR kind LIKE $q ESCAPE '\\' OR data LIKE $q ESCAPE '\\')");
-            cmd.Parameters.AddWithValue("$q", EventSearch.ContainsPattern(query));
-        }
+            TextMatch.AddTerms(cmd, where, [query]);
         if (!string.IsNullOrWhiteSpace(app))
         {
             where.Add("app = $app COLLATE NOCASE");

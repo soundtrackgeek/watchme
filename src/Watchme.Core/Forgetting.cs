@@ -94,15 +94,8 @@ public static partial class Forgetting
             cmd.Parameters.AddWithValue("$id", id);
         }
         var terms = selection.Terms.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
-        for (var i = 0; i < terms.Count; i++)
-        {
-            // Only a focus event's title is its own; its app is just which program had focus.
-            where.Add($"""
-                ((source = 'focus' AND title LIKE $q{i} ESCAPE '\')
-                 OR (source <> 'focus' AND (title LIKE $q{i} ESCAPE '\' OR app LIKE $q{i} ESCAPE '\' OR data LIKE $q{i} ESCAPE '\')))
-                """);
-            cmd.Parameters.AddWithValue($"$q{i}", EventSearch.ContainsPattern(terms[i]));
-        }
+        // The index narrows it down; the check below decides (see Matches).
+        TextMatch.AddTerms(cmd, where, terms);
         cmd.CommandText = $"SELECT id, ts, source, kind, app, title, data, ext_id FROM events WHERE {string.Join(" AND ", where)} ORDER BY ts, id;";
 
         var items = new List<Item>();
@@ -112,6 +105,9 @@ public static partial class Forgetting
             var src = r.GetString(2);
             var title = r.IsDBNull(5) ? null : r.GetString(5);
             var data = r.IsDBNull(6) ? null : r.GetString(6);
+            var app = r.IsDBNull(4) ? null : r.GetString(4);
+            if (terms.Count > 0 && !Matches(src, title, app, data, terms))
+                continue;
             // Only a whole window can take focus time out (it writes the events that keep the
             // spans around it right); anywhere else a focus event keeps its time and loses its title.
             var action = redact || (src == EventSources.Focus && !selection.IsWholeWindow) ? Action.Redact : Action.Remove;
@@ -122,6 +118,19 @@ public static partial class Forgetting
                 r.IsDBNull(4) ? null : r.GetString(4), title, data, r.IsDBNull(7) ? null : r.GetString(7), action));
         }
         return new Plan(selection, redact, items);
+    }
+
+    /// <summary>
+    /// Whether every term is in the event's own text, ignoring case and accents. Only a focus
+    /// event's title is its own (its app is just which program had focus), and the kind never is,
+    /// so "visit" doesn't forget every page.
+    /// </summary>
+    private static bool Matches(string source, string? title, string? app, string? data, List<string> terms)
+    {
+        var fields = source == EventSources.Focus
+            ? [title]
+            : new[] { title, app }.Concat(TextMatch.DataText(data)).ToList();
+        return terms.All(t => fields.Any(f => TextMatch.Contains(f, t)));
     }
 
     /// <summary>Forgets what <see cref="Preview"/> lists, in one transaction.</summary>

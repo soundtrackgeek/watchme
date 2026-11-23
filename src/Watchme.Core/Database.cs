@@ -5,7 +5,7 @@ namespace Watchme.Core;
 /// <summary>The SQLite event store. Not thread-safe: the agent uses it from its single writer loop.</summary>
 public sealed class Database : IDisposable
 {
-    public const int SchemaVersion = 3;
+    public const int SchemaVersion = 4;
 
     // v2: scraped events carry an external id, so re-reading an overlapping window of an
     // app's own data never creates duplicates.
@@ -31,6 +31,24 @@ public sealed class Database : IDisposable
             source   TEXT,               -- one source only, or NULL for all
             created  INTEGER NOT NULL
         );
+        """;
+
+    // v4: a full-text index for search (see TextMatch), kept in step with events by triggers.
+    // Contentless: the text stays in events, the index only holds which rows have which trigrams.
+    private static readonly string SchemaV4 = $"""
+        CREATE VIRTUAL TABLE events_fts USING fts5(
+            text, content = '', contentless_delete = 1, tokenize = 'trigram remove_diacritics 1');
+        CREATE TRIGGER events_fts_insert AFTER INSERT ON events BEGIN
+            INSERT INTO events_fts (rowid, text) VALUES (new.id, {TextMatch.IndexedText("new")});
+        END;
+        CREATE TRIGGER events_fts_delete AFTER DELETE ON events BEGIN
+            DELETE FROM events_fts WHERE rowid = old.id;
+        END;
+        CREATE TRIGGER events_fts_update AFTER UPDATE OF title, app, kind, data ON events BEGIN
+            DELETE FROM events_fts WHERE rowid = old.id;
+            INSERT INTO events_fts (rowid, text) VALUES (new.id, {TextMatch.IndexedText("new")});
+        END;
+        INSERT INTO events_fts (rowid, text) SELECT e.id, {TextMatch.IndexedText("e")} FROM events e;
         """;
 
     // The schema keeps only raw facts. `focus_spans` turns them into intervals:
@@ -120,6 +138,8 @@ public sealed class Database : IDisposable
             Execute(SchemaV2, tx);
         if (version < 3)
             Execute(SchemaV3, tx);
+        if (version < 4)
+            Execute(SchemaV4, tx);
         Execute($"PRAGMA user_version = {SchemaVersion};", tx);
         tx.Commit();
     }

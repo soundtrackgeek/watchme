@@ -479,8 +479,12 @@ exit are left out unless you ask for them with `--source process`.
 | `--from DAY`, `--to DAY` | A date, `today` or `yesterday` |
 | `--limit N` | How many to print (default 50, at most 1000); the total is always shown |
 
-Matching ignores case for English letters only, as SQLite's `LIKE` does: `tiësto` finds
-`Tiësto`, but `TIËSTO` does not.
+Matching ignores case and accents: `tiesto` finds `Tiësto`, `reggaeton` finds `Reggaetón` and
+`oya` finds `Øya`. A word matches inside longer words too (`rate` finds `rateyourmusic.com`).
+Searches use a full-text index (SQLite FTS5 with trigrams), so they stay quick however much
+history there is; the index makes the database file about 70% bigger. Words of one or two
+letters aren't in the index: they are matched by reading the events, ignoring case for English
+letters only.
 
 ## Dashboard
 
@@ -512,7 +516,8 @@ For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you
   pages and your searches; commits per repo, agent time per project and model; programs and
   folders; Total Commander operations and library changes.
 - **Event log:** the raw events, newest first, filterable by source and app. The search matches
-  titles and the event's data too (URLs, commands, folders, artists). Click a row to see
+  titles and the event's data too (URLs, commands, folders, artists), ignoring case and accents,
+  like [`watchme search`](#search). Click a row to see
   everything recorded with it, and to forget or redact that event (see [Forgetting](#forgetting)).
 
 Click a day in *Focus time per day* or *Activity in apps* to open it in the day timeline. Click
@@ -542,6 +547,10 @@ SELECT app, SUM(end_ts - start_ts) / 60000.0 AS minutes
 FROM focus_spans
 WHERE start_ts >= unixepoch('now', 'start of day', 'utc') * 1000
 GROUP BY app ORDER BY minutes DESC;
+
+-- Events holding a word anywhere (case and accents ignored; 3 letters or more)
+SELECT * FROM events_local
+WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH '"tiesto"');
 ```
 
 ## Configuration

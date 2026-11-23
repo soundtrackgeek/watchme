@@ -1,12 +1,14 @@
 using System.Globalization;
 using System.Text;
 using System.Text.Json.Nodes;
+using Microsoft.Data.Sqlite;
 
 namespace Watchme.Core;
 
 /// <summary>
 /// <c>watchme search</c>: finds events in the whole history whose title, app, kind or data
-/// (URLs, commands, folders, artists, prompts) hold every search term.
+/// (URLs, commands, folders, artists, prompts) hold every search term, ignoring case and accents
+/// (see <see cref="TextMatch"/>).
 /// </summary>
 public static class EventSearch
 {
@@ -26,47 +28,38 @@ public static class EventSearch
 
     public static Result Run(Database db, Query q)
     {
-        var where = new List<string>();
-        var parameters = new List<(string, object)>();
-        if (q.FromMs is { } from)
+        // The same conditions for the count and the page of hits.
+        SqliteCommand Command(string select, string tail)
         {
-            where.Add("ts >= $from");
-            parameters.Add(("$from", from));
+            var cmd = db.Connection.CreateCommand();
+            var where = new List<string>();
+            if (q.FromMs is { } from)
+            {
+                where.Add("ts >= $from");
+                cmd.Parameters.AddWithValue("$from", from);
+            }
+            if (q.ToMs is { } to)
+            {
+                where.Add("ts < $to");
+                cmd.Parameters.AddWithValue("$to", to);
+            }
+            if (string.IsNullOrEmpty(q.Source))
+                where.Add("source <> 'process'");
+            else
+            {
+                where.Add("source = $source");
+                cmd.Parameters.AddWithValue("$source", q.Source);
+            }
+            TextMatch.AddTerms(cmd, where, q.Terms);
+            cmd.CommandText = $"SELECT {select} FROM events WHERE {string.Join(" AND ", where)} {tail};";
+            return cmd;
         }
-        if (q.ToMs is { } to)
-        {
-            where.Add("ts < $to");
-            parameters.Add(("$to", to));
-        }
-        if (string.IsNullOrEmpty(q.Source))
-            where.Add("source <> 'process'");
-        else
-        {
-            where.Add("source = $source");
-            parameters.Add(("$source", q.Source));
-        }
-        var terms = q.Terms.Where(t => !string.IsNullOrWhiteSpace(t)).ToList();
-        for (var i = 0; i < terms.Count; i++)
-        {
-            where.Add($"(title LIKE $q{i} ESCAPE '\\' OR app LIKE $q{i} ESCAPE '\\' OR kind LIKE $q{i} ESCAPE '\\' OR data LIKE $q{i} ESCAPE '\\')");
-            parameters.Add(($"$q{i}", ContainsPattern(terms[i])));
-        }
-        var filter = where.Count == 0 ? "" : "WHERE " + string.Join(" AND ", where);
 
-        using var count = db.Connection.CreateCommand();
-        count.CommandText = $"SELECT COUNT(*) FROM events {filter};";
-        foreach (var (name, value) in parameters)
-            count.Parameters.AddWithValue(name, value);
+        using var count = Command("COUNT(*)", "");
         var total = Convert.ToInt32(count.ExecuteScalar(), CultureInfo.InvariantCulture);
 
         // Newest by when it happened, not by id: scrapers import history late.
-        using var cmd = db.Connection.CreateCommand();
-        cmd.CommandText = $"""
-            SELECT id, ts, source, kind, app, title, data FROM events {filter}
-            ORDER BY ts DESC, id DESC LIMIT $limit;
-            """;
-        foreach (var (name, value) in parameters)
-            cmd.Parameters.AddWithValue(name, value);
+        using var cmd = Command("id, ts, source, kind, app, title, data", "ORDER BY ts DESC, id DESC LIMIT $limit");
         cmd.Parameters.AddWithValue("$limit", Math.Clamp(q.Limit, 1, MaxLimit));
         var hits = new List<Hit>();
         using var r = cmd.ExecuteReader();
@@ -84,7 +77,7 @@ public static class EventSearch
     public static (string Key, string Value)? MatchedField(Hit hit, IReadOnlyList<string> terms)
     {
         var shown = $"{hit.Title} {hit.App} {hit.Kind}";
-        var missing = terms.Where(t => !string.IsNullOrWhiteSpace(t) && !Contains(shown, t)).ToList();
+        var missing = terms.Where(t => !string.IsNullOrWhiteSpace(t) && !TextMatch.Contains(shown, t)).ToList();
         if (missing.Count == 0 || hit.Data is null)
             return null;
         JsonObject? data;
@@ -103,7 +96,7 @@ public static class EventSearch
                 JsonValue v => v.ToString(),
                 _ => node.ToJsonString(),
             };
-            if (value is not null && missing.Any(t => Contains(value, t)) && (best is null || value.Length > best.Value.Value.Length))
+            if (value is not null && missing.Any(t => TextMatch.Contains(value, t)) && (best is null || value.Length > best.Value.Value.Length))
                 best = (key, value);
         }
         return best;
@@ -118,7 +111,7 @@ public static class EventSearch
         value = value.ReplaceLineEndings(" ");
         if (value.Length <= max)
             return value;
-        var at = terms.Select(t => value.IndexOf(t.Trim(), StringComparison.OrdinalIgnoreCase)).Where(i => i >= 0).DefaultIfEmpty(0).Min();
+        var at = terms.SelectMany(t => TextMatch.Find(value, t).Take(1)).Select(m => m.Start).DefaultIfEmpty(0).Min();
         var start = Math.Clamp(at - max / 3, 0, value.Length - max);
         var cut = value.Substring(start, max);
         if (start > 0)
@@ -134,16 +127,10 @@ public static class EventSearch
         if (!color || text.Length == 0)
             return text;
         var marked = new bool[text.Length];
-        foreach (var term in terms.Select(t => t.Trim()).Where(t => t.Length > 0))
-        {
-            var i = 0;
-            while ((i = text.IndexOf(term, i, StringComparison.OrdinalIgnoreCase)) >= 0)
-            {
-                for (var j = i; j < i + term.Length; j++)
+        foreach (var term in terms)
+            foreach (var (start, length) in TextMatch.Find(text, term))
+                for (var j = start; j < start + length; j++)
                     marked[j] = true;
-                i += term.Length;
-            }
-        }
         var sb = new StringBuilder();
         for (var i = 0; i < text.Length; i++)
         {
@@ -190,8 +177,6 @@ public static class EventSearch
             output.WriteLine($"Showing the newest {result.Hits.Count:N0} of {result.Total:N0}. Add words, --source or --days to narrow it down, or --limit N to see more.");
         }
     }
-
-    private static bool Contains(string text, string term) => text.Contains(term.Trim(), StringComparison.OrdinalIgnoreCase);
 
     private static string Fit(string s, int width) => s.Length > width ? s[..(width - 1)] + "…" : s.PadRight(width);
 }
