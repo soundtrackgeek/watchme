@@ -13,7 +13,7 @@ internal static class SearchCommand
         EventSources.Focus, EventSources.Idle, EventSources.Process, EventSources.Session, EventSources.Agent,
         EventSources.Aurora, EventSources.AuroraNg, EventSources.MusicLibrary, EventSources.TotalCommander,
         EventSources.T3, EventSources.Git, EventSources.PowerShell, EventSources.Edge, EventSources.Flipside,
-        EventSources.Forever,
+        EventSources.Forever, EventSources.Capsule,
     ];
 
     public static int Run(string[] args)

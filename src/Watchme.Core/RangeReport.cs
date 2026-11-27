@@ -154,6 +154,9 @@ public static class RangeReport
                     ? $"Library: {N(t.AlbumsAdded)} albums added, {N(t.AlbumsRemoved)} removed, {N(t.TagChanges)} tag changes"
                     : null);
 
+        if (t.JournalEntries > 0)
+            Add("Journal", $"{C(t.JournalEntries, "entry", "entries")} in Capsule, {N(t.JournalWords)} words");
+
         if (t.Downloads > 0 || t.MusicSearches > 0)
             Add("Downloads", $"{C(t.Downloads, "download")} in Flipside and Forever, {C(t.MusicSearches, "search", "searches")}");
 

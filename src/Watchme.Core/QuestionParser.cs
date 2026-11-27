@@ -51,6 +51,7 @@ public static partial class QuestionParser
 
     private static readonly Topic RatingTopic = new("rating", [T(EventSources.AuroraNg, "rating"), T(EventSources.MusicLibrary, "rating")], "rating", "ratings", "in Aurora NG and Music Library");
     private static readonly Topic VisitTopic = new("visit", [T(EventSources.Edge, "visit")], "page visit", "page visits", "in Edge");
+    private static readonly Topic JournalTopic = new("journal", [T(EventSources.Capsule, "entry")], "journal entry", "journal entries", "in Capsule");
     private static readonly Topic FileTopic = new("file_op", [T(EventSources.TotalCommander, "file_op")], "file operation", "file operations", "in Total Commander");
 
     /// <summary>
@@ -94,12 +95,14 @@ public static partial class QuestionParser
             new("command", [T(EventSources.PowerShell, "command")], "command", "commands", "in PowerShell"), false),
         (R(@"\b(?:t3(?:\s+code)?|prompts?|claude|codex|agents?|ai|threads?)\b"),
             new("run", [T(EventSources.T3, "run")], "prompt", "prompts", "in T3 Code"), false),
+        (R(@"\b(?:journal(?:l?ed|l?ing)?|diary|capsule)\b(?:\s+entr(?:y|ies))?"), JournalTopic, false),
         (R(@"\b(?:cop(?:y|ied)|mov(?:e|ed)|renam(?:e|ed)|delet(?:e|ed))\b"), FileTopic, false),
 
         (R(@"\b(?:songs?|tracks?|music)\b"), ListenTopic, true),
         (R(@"\bstars?\b"), RatingTopic, true),
         (R(@"\b(?:websites?|web\s*pages?|pages?|sites?|edge|online|the\s+web)\b"), VisitTopic, true),
         (R(@"\b(?:files?|total\s*commander)\b"), FileTopic, true),
+        (R(@"\b(?:entr(?:y|ies)|notes?)\b"), JournalTopic, true),
     ];
 
     /// <summary>
@@ -123,6 +126,7 @@ public static partial class QuestionParser
         ["search"] = Set("search", "searched", "google", "googled", "web", "online", "edge"),
         ["run"] = Set("t3", "code", "claude", "codex", "prompt", "prompts", "ask", "asked", "agent", "agents", "thread", "threads", "ai"),
         ["file_op"] = Set("file", "files", "folder", "folders", "total", "commander"),
+        ["journal"] = Set("journal", "journals", "journaled", "journalled", "diary", "capsule", "entry", "entries", "note", "notes", "write", "wrote", "written", "writing", "my"),
         ["download"] = Set("download", "downloads", "downloaded", "album", "albums"),
     };
 

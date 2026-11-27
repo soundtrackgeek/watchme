@@ -110,6 +110,13 @@ namespace Watchme.Agent
             if (config.ForeverEnabled)
                 scrapers.Add(new ActivityLogScraper(EventSources.Forever, "forever.exe",
                     Path.Combine(AppDataDir(config.ForeverDataDir, "com.soundtrackgeek.forever"), "logs"), config.ScrapeBackfillDays));
+            if (config.CapsuleEnabled)
+            {
+                var settings = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Capsule", "path_settings.json");
+                var fallback = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".capsule", "capsule.db");
+                // Re-read Capsule's settings every scrape, so moving the journal just works.
+                scrapers.Add(new CapsuleScraper(() => config.CapsuleDb ?? CapsuleScraper.DbPathFromSettings(settings, fallback), config.ScrapeBackfillDays));
+            }
             var scraperHost = new ScraperHost(scrapers, Paths.Database, PauseState.FilePath, writer.Post);
 
             var collectors = new[]

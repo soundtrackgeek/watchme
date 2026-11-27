@@ -356,7 +356,7 @@ const $ = (s) => document.querySelector(s);
 const SVGNS = "http://www.w3.org/2000/svg";
 const SOURCE_NAMES = {
   aurora: "Aurora", aurora_ng: "Aurora NG", musiclibrary: "Music Library", totalcmd: "Total Commander",
-  t3: "T3 Code", git: "Git", powershell: "PowerShell", edge: "Edge", flipside: "Flipside", forever: "Forever",
+  t3: "T3 Code", git: "Git", powershell: "PowerShell", edge: "Edge", flipside: "Flipside", forever: "Forever", capsule: "Capsule",
   focus: "Focus", idle: "Idle",
   session: "Session", process: "Process", agent: "Agent",
 };
@@ -734,6 +734,7 @@ function renderTiles(d) {
     { label: "Commands", value: compact(t.commands), note: t.failedCommands ? `${num(t.failedCommands)} failed` : "in PowerShell" },
     { label: "Ratings", value: compact(t.ratings), note: "albums and tracks" },
     { label: "Albums added", value: compact(t.albumsAdded), note: t.albumsRemoved ? `${num(t.albumsRemoved)} removed` : null },
+    { label: "Journal entries", value: compact(t.journalEntries), note: t.journalWords ? `${num(t.journalWords)} words in Capsule` : "in Capsule" },
     { label: "Downloads", value: compact(t.downloads), note: t.musicSearches ? `${num(t.musicSearches)} searches in Flipside and Forever` : "in Flipside and Forever" },
   ];
   $("#tiles").replaceChildren(...tiles.map((x) => el("div", { class: "tile" + (x.hero ? " hero" : "") },

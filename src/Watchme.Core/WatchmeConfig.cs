@@ -102,6 +102,12 @@ public sealed class WatchmeConfig
     /// <summary>Forever's data folder; null means %APPDATA%\com.soundtrackgeek.forever.</summary>
     public string? ForeverDataDir { get; set; }
 
+    /// <summary>Read the journal entries you write, edit and delete in Capsule from its database.</summary>
+    public bool CapsuleEnabled { get; set; } = true;
+
+    /// <summary>Capsule's journal; null means the one Capsule uses (its path settings, else %USERPROFILE%\.capsule\capsule.db).</summary>
+    public string? CapsuleDb { get; set; }
+
     /// <summary>Show the agent in the notification area (pause, resume, dashboard, source problems).</summary>
     public bool TrayIcon { get; set; } = true;
 

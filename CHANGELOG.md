@@ -4,6 +4,21 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.27.0] - 2026-11-27
+
+### Added
+
+- Capsule scraper: what you write in Capsule's journal, not just that its window was open.
+  `capsule/entry` for each new entry (words, mood, tags, title or first words, place and
+  weather, photos, the thread it continues), `capsule/edit` for each save that changed one
+  (`+12 words`, `mood ok → good`, `tags +work −ai`), worked out from Capsule's own history, and
+  `capsule/delete`. Hidden entries are recorded without their title or text. The journal is
+  found through Capsule's own path settings; `capsuleEnabled` and `capsuleDb` in `config.json`.
+- Report: one Capsule line per entry, with the saves that followed it within 30 minutes and how
+  long Capsule was in front while you wrote it.
+- `watchme ask` understands questions about the journal (*How many journal entries did I write
+  this week?*), and the dashboard and range report count journal entries and words.
+
 ## [0.26.0] - 2026-11-23
 
 ### Added

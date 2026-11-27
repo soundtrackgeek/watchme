@@ -275,6 +275,7 @@ public static class DailyReport
         lines.AddRange(EdgeLines(events.Where(e => e.Source == EventSources.Edge && e.Kind == "visit").ToList()));
         lines.AddRange(PowerShellLines(events.Where(e => e.Source == EventSources.PowerShell && e.Kind == "command").ToList()));
         lines.AddRange(MusicAppLines(events.Where(e => e.Source is EventSources.Flipside or EventSources.Forever).ToList()));
+        lines.AddRange(JournalLines(events.Where(e => e.Source == EventSources.Capsule).ToList(), spans));
         lines.AddRange(RatingLines(
             events.Where(e => e.Source == EventSources.MusicLibrary && e.Kind == "rating").ToList(),
             events.Where(e => e.Source == EventSources.AuroraNg && e.Kind == "rating").ToList()));
@@ -282,6 +283,7 @@ public static class DailyReport
             .Where(e => !(e.Source == EventSources.T3 && e.Kind == "run") && e.Source != EventSources.Git
                         && !(e.Source == EventSources.PowerShell && e.Kind == "command")
                         && e.Source is not (EventSources.Flipside or EventSources.Forever)
+                        && !(e.Source == EventSources.Capsule && e.Kind is "entry" or "edit")
                         && !(e.Source == EventSources.Edge && e.Kind == "visit")
                         && !(e.Source == EventSources.MusicLibrary && e.Kind is "album_removed" or "album_added" or "tag_change")
                         && !(e.Source == EventSources.Aurora && e.Kind == "album_added" && addedIds.Contains(Str(e.Data, "album_id")))
@@ -586,6 +588,105 @@ public static class DailyReport
             }
         }
     }
+
+    /// <summary>Capsule events on one entry less than this far apart are one sitting.</summary>
+    public const long JournalSittingGapMs = 30 * 60 * 1000;
+
+    /// <summary>
+    /// Capsule's journal, one line per entry and sitting. Writing an entry and the saves that
+    /// followed (adding a mood or tags a minute later) are one line that shows the entry as it was
+    /// left. With focus spans, the line starts when Capsule came to the front, up to 30 minutes
+    /// before, and says how long it was in front:
+    /// <code>
+    /// 11:23–11:25  Capsule         Wrote “So I'm a big fan of Soda Stream Pepsi Max…”: 86 words · disappointed · #food, in Capsule 2m 10s
+    /// 14:02–14:20  Capsule         Edited “Tough Work Days” 3 times: +40 words, mood ok → good
+    /// </code>
+    /// </summary>
+    private static IEnumerable<(long Ts, string Line)> JournalLines(List<ActivityEvent> events, IReadOnlyList<Span>? spans)
+    {
+        var source = EventSources.DisplayName(EventSources.Capsule);
+        var sittings = new List<List<ActivityEvent>>();
+        foreach (var entry in events.Where(e => e.Kind is "entry" or "edit").GroupBy(e => Str(e.Data, "uuid") ?? ""))
+        {
+            var sitting = new List<ActivityEvent>();
+            foreach (var e in entry.OrderBy(e => e.Ts))
+            {
+                // A new entry always starts a line, even right after an edit of the same uuid.
+                if (sitting.Count > 0 && (e.Ts - sitting[^1].Ts > JournalSittingGapMs || e.Kind == "entry"))
+                {
+                    sittings.Add(sitting);
+                    sitting = [];
+                }
+                sitting.Add(e);
+            }
+            if (sitting.Count > 0)
+                sittings.Add(sitting);
+        }
+
+        // Focus time is shared out in time order, so two entries written back to back don't both count it.
+        var counted = long.MinValue;
+        foreach (var sitting in sittings.OrderBy(s => s[0].Ts))
+        {
+            var first = sitting[0];
+            var last = sitting[^1];
+            var label = JournalText.Label(last.Data);
+            string what;
+            if (first.Kind == "entry")
+            {
+                var parts = new List<string> { $"{Int(last, "words") ?? 0} words" };
+                if (Str(last.Data, "mood") is { Length: > 0 } mood)
+                    parts.Add(mood);
+                if (Tags(last) is { Count: > 0 } tags)
+                    parts.Add(string.Join(" ", tags.Select(t => "#" + t)));
+                if (Int(first, "photos") is { } photos and > 0)
+                    parts.Add(photos == 1 ? "1 photo" : $"{photos} photos");
+                what = $"Wrote {label}: {string.Join(" · ", parts)}";
+            }
+            else if (sitting.Count == 1)
+                what = first.Title ?? $"Edited {label}";
+            else
+            {
+                var changes = new List<string>();
+                var delta = (Int(last, "words") ?? 0) - (Int(first, "words_before") ?? 0);
+                if (delta != 0)
+                    changes.Add(delta > 0 ? $"+{delta} words" : $"−{-delta} words");
+                var (wasMood, mood) = (Str(first.Data, "mood_before"), Str(last.Data, "mood"));
+                if ((wasMood ?? "") != (mood ?? ""))
+                    changes.Add(string.IsNullOrEmpty(wasMood) ? $"mood {mood}" : string.IsNullOrEmpty(mood) ? $"removed mood {wasMood}" : $"mood {wasMood} → {mood}");
+                if (Tags(last) is { Count: > 0 } tags)
+                    changes.Add(string.Join(" ", tags.Select(t => "#" + t)));
+                what = $"Edited {label} {sitting.Count} times" + (changes.Count > 0 ? ": " + string.Join(", ", changes) : "");
+            }
+
+            var start = first.Ts;
+            var end = last.Ts;
+            if (spans is not null)
+            {
+                // Capsule's times are to the minute, so the last one may be up to a minute early.
+                var from = Math.Max(first.Ts - JournalSittingGapMs, counted);
+                var to = last.Ts + 60_000;
+                var inFront = spans
+                    .Where(s => s.App.Equals(JournalApp, StringComparison.OrdinalIgnoreCase) && s.End > from && s.Start < to)
+                    .Select(s => (Start: Math.Max(s.Start, from), End: Math.Min(s.End, to)))
+                    .ToList();
+                var ms = inFront.Sum(s => s.End - s.Start);
+                if (ms > 0)
+                {
+                    start = Math.Min(start, inFront.Min(s => s.Start));
+                    end = Math.Max(end, inFront.Max(s => s.End));
+                    what += $", in Capsule {Duration(ms)}";
+                }
+                counted = Math.Max(counted, to);
+            }
+            yield return (start, $"{When(start, end)}{source,-15} {Trim(what, 400)}");
+        }
+
+        static List<string> Tags(ActivityEvent e) =>
+            e.Data?["tags"] is JsonArray a ? a.Select(t => t?.ToString()).OfType<string>().ToList() : [];
+    }
+
+    /// <summary>Capsule's process, as focus spans name it.</summary>
+    public const string JournalApp = "capsule-tauri.exe";
 
     /// <summary>Flipside or Forever events more than this far apart are separate sittings.</summary>
     public const long MusicAppSittingGapMs = 30 * 60 * 1000;

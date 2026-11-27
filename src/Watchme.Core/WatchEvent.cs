@@ -38,6 +38,7 @@ public static class EventSources
     public const string Edge = "edge";
     public const string Flipside = "flipside";
     public const string Forever = "forever";
+    public const string Capsule = "capsule";
 
     /// <summary>How each source is named in reports.</summary>
     public static string DisplayName(string source) => source switch
@@ -52,6 +53,7 @@ public static class EventSources
         T3 => "T3 Code",
         Flipside => "Flipside",
         Forever => "Forever",
+        Capsule => "Capsule",
         _ => source.Length == 0 ? source : char.ToUpperInvariant(source[0]) + source[1..],
     };
 

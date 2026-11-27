@@ -10,7 +10,7 @@ so it can tell you not just *that* you used an app but *what you did* in it.
 This is a layered plan:
 
 1. **Focus, idle, sessions and processes** — works for every app with no per-app code.
-2. **App-native data sources** — Aurora, Aurora NG, Music Library ratings, Total Commander, T3 Code sessions, git, Edge, Flipside and Forever.
+2. **App-native data sources** — Aurora, Aurora NG, Music Library ratings, Total Commander, T3 Code sessions, git, Edge, Flipside, Forever and Capsule.
 3. A local endpoint your own apps can push events to.
 4. OS-level file attribution (ETW) and UI Automation scraping where nothing else works.
 
@@ -55,6 +55,8 @@ last `scrapeBackfillDays` days.
 | `forever` | `browse` | 〃 | `Browsed alice's shares (12,345 files)` |
 | `forever` | `wanted_add` | 〃 | `Added INXS – INXS² The Remixes (2004) to Wanted` |
 | `flipside` / `forever` | `download_queued` / `download` | 〃 | `Downloaded Tiësto – Just Be (2004) from Deezer (FLAC, 12 tracks)` |
+| `capsule` | `entry`      | Capsule's journal, `capsule.db` → `entries` | `Wrote “So I'm a big fan of Soda Stream Pepsi Max…” · 91 words · disappointed · #pepsi-max #sodastream` |
+| `capsule` | `edit` / `delete` | 〃 → `history` | `Edited “On Saturday Ratna is leaving us…”: mood ok, tags +italy +milan` |
 
 Track and disc numbering changes are kept in `data.changes` but shortened to "numbering" in titles.
 
@@ -218,6 +220,34 @@ event log and dashboard but not the report, since the finished download says the
 20:16–20:20  Forever         Browsed the shares of 2 users: alice, bob (no answer)
 20:22–21:05  Forever         Downloaded 3 albums (1.4 GB): INXS - Kick (1987) from alice; ...
 21:10        Flipside        Downloaded Tiësto – Just Be (2004) from Deezer (FLAC, 12 tracks)
+```
+
+### Capsule
+
+Capsule's window title is always just *Capsule*, so focus alone only says that it was open.
+Watchme reads its journal database (read-only, every 30 seconds) for what you wrote: the one
+Capsule uses (`databasePath` in `%APPDATA%\Capsule\path_settings.json`, else
+`%USERPROFILE%\.capsule\capsule.db`). Only that setting is read from the file.
+
+- `capsule/entry` — a new journal entry. `data` has its uuid, words, mood, tags, title (if it has
+  one), the first 200 characters as plain text, place and weather, photos, and the thread it
+  continues. The title names the entry by its title, or else by its first words.
+- `capsule/edit` — a save that changed an entry. Capsule keeps the state before each save in its
+  `history` table; Watchme compares it with the state after (the next save, or the entry as it is
+  now), so a save says what it changed (`+12 words`, `mood ok → good`, `tags +work −ai`, `title “…”`)
+  and saves that changed nothing are left out.
+- `capsule/delete` — a deleted entry, by name and word count.
+
+Entries you hide in Capsule are recorded as *a hidden entry*, with words, mood and tags but no
+title or text. Capsule renumbers its entries now and then, so Watchme knows them by uuid.
+
+In the report, an entry and the saves that followed it within 30 minutes (adding a mood or tags
+right after writing, say) are one line showing the entry as you left it. The line starts when
+Capsule came to the front, up to 30 minutes before you saved, and says how long it was in front:
+
+```
+08:21–08:26  Capsule         Wrote “On Saturday Ratna is leaving us. She's been here for 3 or 4…”: 57 words · ok · #indonesa #italy #ratna #milan, in Capsule 4m 40s
+14:02–14:20  Capsule         Edited “Tough Work Days” 3 times: +40 words, mood ok → good
 ```
 
 ### Total Commander setup
@@ -475,7 +505,7 @@ exit are left out unless you ask for them with `--source process`.
 
 | Option | Meaning |
 | --- | --- |
-| `--source S` | One source: `edge`, `powershell` (`pwsh`), `git`, `t3`, `aurora`, `aurora_ng`, `musiclibrary`, `totalcmd` (`tc`), `flipside`, `forever`, `focus`, … |
+| `--source S` | One source: `edge`, `powershell` (`pwsh`), `git`, `t3`, `aurora`, `aurora_ng`, `musiclibrary`, `totalcmd` (`tc`), `flipside`, `forever`, `capsule`, `focus`, … |
 | `--days N` | The last N days, today included |
 | `--from DAY`, `--to DAY` | A date, `today` or `yesterday` |
 | `--limit N` | How many to print (default 50, at most 1000); the total is always shown |
@@ -553,6 +583,7 @@ whole history, except *What did I do*, which means today.
 | T3, Claude, Codex, prompts, agents | T3 Code |
 | copy, move, rename, delete, files | Total Commander |
 | download | Flipside and Forever |
+| journal, diary, Capsule, entries, notes | Entries written in Capsule |
 
 Without any of these, it searches every source but processes (*Did I use Photoshop?*, which
 also says how long Photoshop was in front). When a question has more than one, the first verb
@@ -582,7 +613,7 @@ its activity list set to that stretch of time. The question is kept in the addre
 For any range of days (today, yesterday, the last 7, 30 or 90 days, or dates you pick), it shows:
 
 - **Totals:** focus time, songs, pages, agent prompts, commits, commands, ratings, albums added,
-  downloads (Flipside and Forever).
+  downloads (Flipside and Forever), journal entries and words (Capsule).
 - **Focus time per day**, stacked by app (the top 7, the rest as *Other*), with a table view.
 - **When:** an hour-of-day grid of focus minutes or app events.
 - **Day timeline:** one day's blocks of work by app, idle stretches, and the report's *Activity
@@ -666,6 +697,8 @@ WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH '"tiesto"');
 | `flipsideDataDir`     | `null`  | `null` means `%APPDATA%\com.soundtrackgeek.flipside` |
 | `foreverEnabled`      | `true`  | Read Forever's activity log (searches, browsed users, Wanted, downloads) |
 | `foreverDataDir`      | `null`  | `null` means `%APPDATA%\com.soundtrackgeek.forever` |
+| `capsuleEnabled`      | `true`  | Read the journal entries you write, edit and delete in Capsule |
+| `capsuleDb`           | `null`  | `null` means the journal Capsule uses (its path settings, else `%USERPROFILE%\.capsule\capsule.db`) |
 | `scrapeBackfillDays`  | 7       | History imported from apps on first run |
 | `trayIcon`            | `true`  | Show the [tray icon](#tray-icon) while the agent runs |
 
