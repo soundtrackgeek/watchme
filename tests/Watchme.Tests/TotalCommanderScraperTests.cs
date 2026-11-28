@@ -98,6 +98,23 @@ public sealed class TotalCommanderScraperTests : IDisposable
     }
 
     [Fact]
+    public void Folder_only_group_does_not_stop_the_scraper()
+    {
+        // A multi-disc album with an empty CD1 folder, as TC logged it on this machine.
+        WriteLog(
+            Line(0, @"NewFolder: f:\_add\Album"),
+            Line(0, @"NewFolder: f:\_add\Album\CD1"),
+            Line(0, @"DeleteFolder: c:\dl\Album\CD1"),
+            Line(0, @"NewFolder: f:\_add\Album\CD2"),
+            Line(0, @"Move: c:\dl\Album\CD2\01.mp3 -> f:\_add\Album\CD2\01.mp3"));
+
+        var titles = Scrape(nowSecond: 30).Select(e => e.Title).ToList();
+
+        Assert.Equal(@"Created 2 folders in f:\_add", titles[0]);
+        Assert.Contains(titles, t => t!.StartsWith("Moved", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void Rotated_logs_are_read_too()
     {
         File.WriteAllText(Path.Combine(_dir, "totalcmd_old.log"), Line(-3600, @"Delete: c:\old.txt") + "\r\n");

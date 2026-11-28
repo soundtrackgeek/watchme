@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.27.1] - 2026-11-28
+
+### Fixed
+
+- Total Commander scraper no longer stops for good on a group of folder lines with no file
+  operation in it (a multi-disc album with an empty `CD1` folder: `NewFolder album`,
+  `NewFolder album\CD1`, then nothing). It threw "Sequence contains no elements" on every run
+  and recorded nothing after that point; the stuck lines are picked up on the next run.
+
 ## [0.27.0] - 2026-11-27
 
 ### Added

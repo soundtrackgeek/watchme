@@ -238,8 +238,11 @@ internal sealed partial class TotalCommanderScraper(Func<string?> logPath, int b
         else
         {
             // Folder operations ride along with copies and deletes; lead with the file operation.
-            var main = counts.Where(c => c.Key is not ("NewFolder" or "DeleteFolder")).MaxBy(c => c.Value).Key
-                       ?? counts.MaxBy(c => c.Value).Key;
+            // MaxBy over KeyValuePair (a struct) throws on an empty sequence rather than returning
+            // null, so fall back explicitly when the group holds only folder lines (an empty CD1
+            // folder: NewFolder album, NewFolder album\CD1, then nothing moved into it).
+            var fileOps = counts.Where(c => c.Key is not ("NewFolder" or "DeleteFolder")).ToList();
+            var main = (fileOps.Count > 0 ? fileOps : [.. counts]).MaxBy(c => c.Value).Key;
             var lines = group.Where(l => l.Op == main).ToList();
             var from = CommonFolder(lines.Select(l => l.From));
             var to = CommonFolder(lines.Where(l => l.To is not null).Select(l => l.To));
